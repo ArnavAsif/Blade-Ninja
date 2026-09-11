@@ -31,12 +31,13 @@ export class Fruit {
     this.flightTime = 0;
     this.hasReachedApex = false;
     this.missedHandled = false;
+    this.isRecoveryFruit = false;
   }
 
   /**
    * Resets and initializes the pooled fruit with launch trajectory parameters.
    */
-  reset(x, y, vx, vy, gravity, type, rotationSpeed, spawnTime = performance.now()) {
+  reset(x, y, vx, vy, gravity, type, rotationSpeed, spawnTime = performance.now(), isRecoveryFruit = false) {
     this.x = x;
     this.y = y;
     this.vx = vx;
@@ -54,6 +55,7 @@ export class Fruit {
     this.flightTime = 0;
     this.hasReachedApex = false;
     this.missedHandled = false;
+    this.isRecoveryFruit = Boolean(isRecoveryFruit);
   }
 
   update(dt, screenWidth, screenHeight) {
@@ -121,6 +123,30 @@ export class Fruit {
     }
 
     ctx.rotate(this.rotation);
+
+    // Render restorative radiant aura behind recovery fruit
+    if (this.isRecoveryFruit) {
+      const pulse = 0.82 + 0.18 * Math.sin(performance.now() * 0.007);
+      const auraRadius = this.radius * 1.55;
+      const auraGrad = ctx.createRadialGradient(0, 0, this.radius * 0.3, 0, 0, auraRadius);
+      auraGrad.addColorStop(0, `rgba(16, 185, 129, ${0.45 * pulse})`);
+      auraGrad.addColorStop(0.6, `rgba(245, 158, 11, ${0.30 * pulse})`);
+      auraGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+
+      ctx.save();
+      ctx.fillStyle = auraGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, auraRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Delicate pulsing emerald halo ring
+      ctx.strokeStyle = `rgba(52, 211, 153, ${0.60 * pulse})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius * 1.25, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     const sprite = getFruitSprite(this.type, 'whole');
     if (sprite) {

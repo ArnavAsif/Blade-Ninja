@@ -7,10 +7,12 @@
 }
 
 .comboBadge {
+  position: relative;
   display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 6px 18px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 18px 8px;
   background: var(--bg-glass);
   border: 1px solid rgba(56, 189, 248, 0.4);
   border-radius: 9999px;
@@ -18,18 +20,50 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 16px rgba(56, 189, 248, 0.25);
   transform-origin: center center;
   will-change: transform;
+  overflow: hidden;
+}
+
+.badgeContent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.labelCol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
 }
 
 .megaCombo {
-  border-color: rgba(245, 158, 11, 0.7);
+  border-color: rgba(245, 158, 11, 0.75);
   background: rgba(245, 158, 11, 0.16);
   box-shadow: 0 0 24px rgba(245, 158, 11, 0.4), 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .maxCombo {
-  border-color: rgba(244, 63, 94, 0.8);
-  background: rgba(244, 63, 94, 0.2);
-  box-shadow: 0 0 30px rgba(244, 63, 94, 0.5), 0 4px 16px rgba(0, 0, 0, 0.5);
+  border-color: rgba(244, 63, 94, 0.85);
+  background: rgba(244, 63, 94, 0.22);
+  box-shadow: 0 0 30px rgba(244, 63, 94, 0.55), 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.feverBadge {
+  border-color: rgba(251, 191, 36, 0.9);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.28) 0%, rgba(245, 158, 11, 0.24) 100%);
+  box-shadow: 0 0 32px rgba(245, 158, 11, 0.6), 0 0 16px rgba(239, 68, 68, 0.4);
+  animation: feverPulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes feverPulse {
+  0% {
+    box-shadow: 0 0 22px rgba(245, 158, 11, 0.45), 0 4px 16px rgba(0, 0, 0, 0.4);
+    border-color: rgba(251, 191, 36, 0.75);
+  }
+  100% {
+    box-shadow: 0 0 36px rgba(251, 191, 36, 0.8), 0 0 18px rgba(239, 68, 68, 0.6);
+    border-color: rgba(254, 240, 138, 1.0);
+  }
 }
 
 .multiplier {
@@ -51,6 +85,11 @@
   text-shadow: 0 0 16px rgba(244, 63, 94, 0.8);
 }
 
+.feverBadge .multiplier {
+  color: #FEF08A;
+  text-shadow: 0 0 16px rgba(251, 191, 36, 0.9), 0 0 8px rgba(239, 68, 68, 0.7);
+}
+
 .text {
   font-size: 11px;
   font-weight: 800;
@@ -59,10 +98,59 @@
   color: var(--text-secondary);
 }
 
+.subtext {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.feverSubtext {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #FDE047;
+}
+
 .megaCombo .text {
   color: #FEF08A;
 }
 
 .maxCombo .text {
   color: #FFE4E6;
+}
+
+.feverBadge .text {
+  color: #FFFBEB;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+}
+
+.timerTrack {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.timerBar {
+  height: 100%;
+  background: linear-gradient(90deg, #38BDF8, #93C5FD);
+  border-radius: 9999px;
+  transition: width 0.08s linear;
+}
+
+.megaCombo .timerBar {
+  background: linear-gradient(90deg, #F59E0B, #FDE047);
+}
+
+.maxCombo .timerBar {
+  background: linear-gradient(90deg, #F43F5E, #FDA4AF);
+}
+
+.feverBadge .timerBar {
+  background: linear-gradient(90deg, #EF4444, #FBBF24);
 }

@@ -84,26 +84,40 @@ export function MainMenu({
     setIsStarting(true);
 
     // Playful exit transition before starting the gameplay canvas
-    gsap.to(
-      [
-        titleGroupRef.current,
-        modesRef.current,
-        recordRef.current,
-        actionGroupRef.current,
-        footerRef.current,
-      ],
-      {
-        opacity: 0,
-        y: -15,
-        scale: 0.97,
-        stagger: 0.04,
-        duration: 0.22,
-        ease: 'power2.in',
-        onComplete: () => {
-          onStart();
-        },
+    const targets = [
+      titleGroupRef.current,
+      modesRef.current,
+      recordRef.current,
+      actionGroupRef.current,
+      footerRef.current,
+    ].filter(Boolean);
+
+    if (targets.length === 0) {
+      try {
+        onStart();
+      } catch (err) {
+        console.error('Error starting game:', err);
+        setIsStarting(false);
       }
-    );
+      return;
+    }
+
+    gsap.to(targets, {
+      opacity: 0,
+      y: -15,
+      scale: 0.97,
+      stagger: 0.04,
+      duration: 0.22,
+      ease: 'power2.in',
+      onComplete: () => {
+        try {
+          onStart();
+        } catch (err) {
+          console.error('Error starting game:', err);
+          setIsStarting(false);
+        }
+      },
+    });
   }, [isStarting, onStart, audioManager]);
 
   const handleSelectMode = useCallback((modeId) => {

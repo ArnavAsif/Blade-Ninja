@@ -7,6 +7,7 @@ import { ComboDisplay } from '../Combo/ComboDisplay.jsx';
 import { LivesDisplay } from '../Lives/LivesDisplay.jsx';
 import { GameOverModal } from '../GameOver/GameOverModal.jsx';
 import { SettingsModal } from '../Settings/SettingsModal.jsx';
+import { ActivePowerUps } from '../PowerUps/ActivePowerUps.jsx';
 import styles from './GameUI.module.css';
 
 export function GameUI({ gameState, engine }) {
@@ -65,12 +66,20 @@ export function GameUI({ gameState, engine }) {
   const handleStart = () => {
     if (engine) {
       if (engine.audioManager) {
-        engine.audioManager.unlockAudio();
-        engine.audioManager.playGameStart();
+        try {
+          engine.audioManager.unlockAudio();
+          engine.audioManager.playGameStart();
+        } catch {
+          // Ignore audio initialization errors
+        }
       }
-      engine.reset();
-      engine.start();
-      engine.resume();
+      try {
+        engine.reset();
+        engine.start();
+        engine.resume();
+      } catch (err) {
+        console.error('Error starting game engine:', err);
+      }
     }
     if (gameState) {
       gameState.resetSession();
@@ -103,12 +112,20 @@ export function GameUI({ gameState, engine }) {
   const handleRestart = () => {
     if (engine) {
       if (engine.audioManager) {
-        engine.audioManager.unlockAudio();
-        engine.audioManager.playGameStart();
+        try {
+          engine.audioManager.unlockAudio();
+          engine.audioManager.playGameStart();
+        } catch {
+          // Ignore audio initialization errors
+        }
       }
-      engine.reset();
-      engine.start();
-      engine.resume();
+      try {
+        engine.reset();
+        engine.start();
+        engine.resume();
+      } catch (err) {
+        console.error('Error restarting game engine:', err);
+      }
     }
     if (gameState) {
       gameState.resetSession();
@@ -117,9 +134,14 @@ export function GameUI({ gameState, engine }) {
   };
 
   const handleMainMenu = () => {
+    setIsPauseSettingsOpen(false);
     if (engine) {
       if (engine.audioManager) engine.audioManager.playButtonClick();
-      engine.reset();
+      try {
+        engine.reset();
+      } catch (err) {
+        console.error('Error resetting engine:', err);
+      }
     }
     if (gameState) {
       gameState.setState(STATES.MENU);
@@ -177,31 +199,37 @@ export function GameUI({ gameState, engine }) {
       )}
 
       {(currentState === STATES.PLAYING || currentState === STATES.PAUSED) && (
-        <header ref={hudRef} className={styles.hud}>
-          <div className={styles.hudLeft}>
-            <ScoreDisplay gameState={gameState} />
-          </div>
+        <>
+          <header ref={hudRef} className={styles.hud}>
+            <div className={styles.hudLeft}>
+              <ScoreDisplay gameState={gameState} />
+            </div>
 
-          <div className={styles.hudCenter}>
-            <ComboDisplay gameState={gameState} />
-          </div>
+            <div className={styles.hudCenter}>
+              <ComboDisplay gameState={gameState} />
+            </div>
 
-          <div className={styles.hudRight}>
-            <LivesDisplay gameState={gameState} />
-            <button
-              type="button"
-              className={styles.pauseIconButton}
-              onClick={handlePause}
-              onMouseEnter={() => engine?.audioManager?.playButtonHover()}
-              aria-label="Pause game"
-            >
-              <svg viewBox="0 0 24 24" className={styles.pauseSvg} fill="currentColor">
-                <rect x="6" y="5" width="4" height="14" rx="1.5" />
-                <rect x="14" y="5" width="4" height="14" rx="1.5" />
-              </svg>
-            </button>
-          </div>
-        </header>
+            <div className={styles.hudRight}>
+              <LivesDisplay gameState={gameState} />
+              <button
+                type="button"
+                className={styles.pauseIconButton}
+                onClick={handlePause}
+                onMouseEnter={() => engine?.audioManager?.playButtonHover()}
+                aria-label="Pause game and open menu"
+                title="Pause / Menu (Esc or P)"
+              >
+                <svg viewBox="0 0 24 24" className={styles.pauseSvg} fill="currentColor">
+                  <rect x="6" y="5" width="4" height="14" rx="1.5" />
+                  <rect x="14" y="5" width="4" height="14" rx="1.5" />
+                </svg>
+                <span className={styles.pauseButtonText}>Menu</span>
+              </button>
+            </div>
+          </header>
+
+          <ActivePowerUps engine={engine} />
+        </>
       )}
 
       {currentState === STATES.PAUSED && (
@@ -322,6 +350,7 @@ export function GameUI({ gameState, engine }) {
           bestScore={gameState ? gameState.bestScore : 0}
           maxCombo={gameState ? gameState.maxCombo : 0}
           fruitsSliced={gameState ? gameState.fruitsSliced : 0}
+          livesRecovered={gameState ? (gameState.getProgression()?.totalLivesRecovered || 0) : 0}
           modeName={gameState ? gameState.getModeConfig().name : 'Classic'}
           audioManager={engine ? engine.audioManager : null}
           onRestart={handleRestart}

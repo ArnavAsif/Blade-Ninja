@@ -15,7 +15,7 @@ export function LivesDisplay({ gameState }) {
   );
   const [lives, setLives] = useState(gameState ? gameState.lives : 3);
   const [maxLives, setMaxLives] = useState(gameState ? gameState.maxLives : 3);
-  const [lostIndex, setLostIndex] = useState(-1);
+  const [animatingSlot, setAnimatingSlot] = useState(null);
 
   useEffect(() => {
     if (!gameState) return;
@@ -27,20 +27,26 @@ export function LivesDisplay({ gameState }) {
         setTimeRemaining(gameState.timeRemaining ?? config.timer);
       }
       if (typeof config?.lives === 'number') {
-        setMaxLives(config.lives);
+        const configuredMax = config.maxLives ?? config.lives;
+        setMaxLives(configuredMax);
         setLives(config.lives);
       }
     });
 
-    let prevLives = gameState.lives;
-    const unsubscribeLives = gameState.subscribeLives((currentLives, currentMax) => {
+    const unsubscribeLives = gameState.subscribeLives((currentLives, currentMax, event) => {
       if (currentLives !== null && currentMax !== null) {
-        if (currentLives < prevLives) {
-          setLostIndex(currentLives);
-        } else if (currentLives === currentMax) {
-          setLostIndex(-1);
+        if (event) {
+          if (event.type === 'lost') {
+            setAnimatingSlot({ index: event.lostIndex, type: 'lost' });
+            setTimeout(() => setAnimatingSlot(null), 650);
+          } else if (event.type === 'recovered') {
+            setAnimatingSlot({ index: event.recoveredIndex, type: 'recovered' });
+            setTimeout(() => setAnimatingSlot(null), 800);
+          } else if (event.type === 'bomb_fatal') {
+            setAnimatingSlot({ index: -1, type: 'bomb_fatal' });
+            setTimeout(() => setAnimatingSlot(null), 700);
+          }
         }
-        prevLives = currentLives;
         setLives(currentLives);
         setMaxLives(currentMax);
       }
@@ -80,48 +86,92 @@ export function LivesDisplay({ gameState }) {
   }
 
   const slots = [];
+  const isBombFatal = animatingSlot?.type === 'bomb_fatal';
+
   for (let i = 0; i < maxLives; i++) {
     const isActive = i < lives;
-    const isJustLost = i === lostIndex;
+    const isJustLost = (animatingSlot?.type === 'lost' && animatingSlot?.index === i) || isBombFatal;
+    const isJustRecovered = animatingSlot?.type === 'recovered' && animatingSlot?.index === i;
+
+    let slotStateClass = isActive ? styles.activeSlot : styles.lostSlot;
+    if (isJustLost) {
+      slotStateClass = `${slotStateClass} ${styles.justLost}`;
+    } else if (isJustRecovered) {
+      slotStateClass = `${slotStateClass} ${styles.justRecovered}`;
+    }
 
     slots.push(
       <div
         key={i}
-        className={`${styles.lifeSlot} ${isActive ? styles.activeSlot : styles.lostSlot} ${
-          isJustLost ? styles.justLost : ''
-        }`}
-        aria-label={isActive ? 'Active life' : 'Lost life'}
+        className={`${styles.lifeSlot} ${slotStateClass}`}
+        aria-label={isActive ? `Life ${i + 1}: Active` : `Life ${i + 1}: Lost`}
       >
         <svg
-          viewBox="0 0 24 24"
+          viewBox="0 0 32 32"
           className={styles.lifeIcon}
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
           {isActive ? (
-            // Active Crimson Blade Gem Emblem
-            <path
-              d="M12 2L15 8L21 9L16.5 14L18 20L12 17L6 20L7.5 14L3 9L9 8L12 2Z"
-              fill="url(#activeLifeGrad)"
-              stroke="#F43F5E"
-              strokeWidth="1.2"
-              strokeLinejoin="round"
-            />
+            // High-Definition Faceted Ruby Ninja Crest
+            <g className={styles.crestGroup}>
+              {/* Facet 1: Top Left highlight */}
+              <path d="M16 3 L5 9 L16 15 Z" fill="#FDA4AF" />
+              {/* Facet 2: Top Right light */}
+              <path d="M16 3 L27 9 L16 15 Z" fill="#FB7185" />
+              {/* Facet 3: Left flank body */}
+              <path d="M5 9 L9 22 L16 15 Z" fill="#F43F5E" />
+              {/* Facet 4: Right flank body */}
+              <path d="M27 9 L23 22 L16 15 Z" fill="#E11D48" />
+              {/* Facet 5: Bottom Left deep ruby */}
+              <path d="M9 22 L16 29 L16 15 Z" fill="#BE123C" />
+              {/* Facet 6: Bottom Right darkest ruby shadow */}
+              <path d="M23 22 L16 29 L16 15 Z" fill="#9F1239" />
+
+              {/* Inner facet seams */}
+              <path
+                d="M16 3 L16 29 M5 9 L27 9 M5 9 L16 15 L27 9 M9 22 L16 15 L23 22"
+                stroke="rgba(255, 255, 255, 0.35)"
+                strokeWidth="0.6"
+              />
+
+              {/* Outer forged platinum/ruby perimeter bevel */}
+              <path
+                d="M16 3 L27 9 L23 22 L16 29 L9 22 L5 9 Z"
+                stroke="rgba(255, 241, 242, 0.9)"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+
+              {/* Specular apex glint star */}
+              <polygon points="14,6 14.8,7.5 16.5,7.8 15.2,9 15.5,10.6 14,9.8 12.5,10.6 12.8,9 11.5,7.8 13.2,7.5" fill="#FFFFFF" opacity="0.9" />
+            </g>
           ) : (
-            // Lost Life Cross Strike Emblem
-            <g>
-              <circle cx="12" cy="12" r="9" stroke="#334155" strokeWidth="1.5" strokeDasharray="3 3" />
-              <line x1="8" y1="8" x2="16" y2="16" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" />
-              <line x1="16" y1="8" x2="8" y2="16" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" />
+            // Struck Out Titanium Slot with Katana Slash Cross
+            <g className={styles.struckGroup}>
+              {/* Dark titanium faceted backplate */}
+              <path
+                d="M16 3 L27 9 L23 22 L16 29 L9 22 L5 9 Z"
+                fill="#0F172A"
+                stroke="#334155"
+                strokeWidth="1.2"
+                strokeDasharray="2.5 2"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M16 4 L26 9.5 L22.5 21.5 L16 28 L9.5 21.5 L6 9.5 Z"
+                fill="#1E293B"
+                opacity="0.6"
+              />
+
+              {/* Glowing etched strike slash center */}
+              <circle cx="16" cy="16" r="7" fill="rgba(239, 68, 68, 0.1)" />
+
+              {/* Visceral Red Katana Strike Cross */}
+              <line x1="10" y1="10" x2="22" y2="22" stroke="#EF4444" strokeWidth="2.4" strokeLinecap="round" />
+              <line x1="22" y1="10" x2="10" y2="22" stroke="#EF4444" strokeWidth="2.4" strokeLinecap="round" />
             </g>
           )}
-          <defs>
-            <linearGradient id="activeLifeGrad" x1="12" y1="2" x2="12" y2="20" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#FB7185" />
-              <stop offset="0.6" stopColor="#E11D48" />
-              <stop offset="1" stopColor="#9F1239" />
-            </linearGradient>
-          </defs>
         </svg>
       </div>
     );
@@ -129,7 +179,10 @@ export function LivesDisplay({ gameState }) {
 
   return (
     <div className={styles.container} role="status" aria-label={`Lives: ${lives} of ${maxLives}`}>
-      <span className={styles.label}>Lives</span>
+      <div className={styles.labelGroup}>
+        <span className={styles.label}>Lives</span>
+        <span className={styles.countBadge}>{lives}/{maxLives}</span>
+      </div>
       <div className={styles.slotsContainer}>{slots}</div>
     </div>
   );

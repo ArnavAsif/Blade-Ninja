@@ -6,6 +6,8 @@
 import { Fruit, FRUIT_TYPES, FRUIT_CONFIGS } from '../entities/Fruit.js';
 import { Bomb } from '../entities/Bomb.js';
 import { SlicedFruit } from '../entities/SlicedFruit.js';
+import { PowerUp } from '../entities/PowerUp.js';
+import { SlicedPowerUp } from '../entities/SlicedPowerUp.js';
 import { ObjectPool } from '../utils/pool.js';
 import { randomRange, randomChoice, lerp } from '../utils/math.js';
 import { getGameModeConfig } from './GameModeConfig.js';
@@ -43,6 +45,21 @@ export class FruitManager {
       50
     );
 
+    this.powerUpPool = new ObjectPool(
+      () => new PowerUp(),
+      (powerUp, ...args) => powerUp.reset(...args),
+      4
+    );
+
+    this.slicedPowerUpPool = new ObjectPool(
+      () => new SlicedPowerUp(),
+      (sliced, ...args) => sliced.reset(...args),
+      8
+    );
+
+    this.powerUpManager = null;
+    this.onPowerUpLaunch = null;
+
     // Difficulty and pacing configuration
     this.config = {
       initialDelay: 0.8,
@@ -68,8 +85,28 @@ export class FruitManager {
     this.onFruitLaunch = null;
     this.onBombLaunch = null;
 
+    // Progression and life recovery mechanics
+    this.gameState = null;
+    this.recoveryFruitCooldown = 25;
+
     // Queue for staggered multi-fruit wave launches
     this.pendingLaunches = [];
+  }
+
+  setGameState(gameState) {
+    this.gameState = gameState;
+  }
+
+  setPowerUpManager(powerUpManager) {
+    this.powerUpManager = powerUpManager;
+  }
+
+  isRecoveryFruitEligible() {
+    if (!this.modeConfig?.recoveryFruitEnabled || !this.modeConfig?.missCostsLife) return false;
+    if (this.recoveryFruitCooldown > 0) return false;
+    if (!this.gameState || this.gameState.lives === null) return false;
+    if (this.gameState.lives >= this.gameState.maxLives || this.gameState.lives <= 0) return false;
+    return Math.random() < 0.16;
   }
 
   setModeConfig(modeConfig) {
@@ -90,6 +127,12 @@ export class FruitManager {
 
   update(dt, screenWidth = 800, screenHeight = 600, onFruitMissed = null) {
     this.sessionTime += dt;
+    this.recoveryFruitCooldown = Math.max(0, this.recoveryFruitCooldown - dt);
+
+    // Evaluate active power-up states
+    const isSlowMotion = this.powerUpManager ? this.powerUpManager.isSlowMotionActive().active : false;
+    const physicsDt = isSlowMotion ? dt * 0.40 : dt;
+    const isFrenzy = this.powerUpManager ? this.powerUpManager.isFrenzyActive() : false;
 
     // Calculate normalized difficulty progression based on mode ramp and multiplier
     const rampDuration = this.config.difficultyRampDuration;
@@ -104,6 +147,8 @@ export class FruitManager {
         if (pending.delay <= 0) {
           if (pending.isBomb) {
             this.launchBomb(screenWidth, screenHeight);
+          } else if (pending.isPowerUp) {
+            this.launchPowerUp(screenWidth, screenHeight, pending.powerUpType);
           } else {
             this.launchFruit(pending.params);
           }
@@ -111,27 +156,34 @@ export class FruitManager {
         }
       }
 
-      // 2. Wave trigger countdown
+      // 2. Wave trigger countdown (accelerated during Frenzy)
       this.waveTimer -= dt;
       if (this.waveTimer <= 0) {
         this.triggerNextWave(screenWidth, screenHeight);
 
-        // Interpolate next wave interval based on difficulty
-        const nextInterval = lerp(
-          this.config.baseInterval,
-          this.config.minInterval,
-          this.difficulty
-        );
-        // Add slight jitter so waves do not feel metronomic
-        this.waveTimer = nextInterval * randomRange(0.88, 1.12);
+        if (isFrenzy) {
+          // Accelerated frenzied bursts
+          this.waveTimer = randomRange(0.48, 0.72);
+        } else {
+          // Interpolate next wave interval based on difficulty
+          const nextInterval = lerp(
+            this.config.baseInterval,
+            this.config.minInterval,
+            this.difficulty
+          );
+          // Scale spawn rate during Fever mode (35% faster waves for exciting arcade flow)
+          const feverFactor = (this.gameState && this.gameState.isFeverActive) ? 0.65 : 1.0;
+          // Add slight jitter so waves do not feel metronomic
+          this.waveTimer = nextInterval * feverFactor * randomRange(0.88, 1.12);
+        }
       }
     }
 
-    // 3. Update active fruits and report missed ones
+    // 3. Update active fruits and report missed ones (slowed physics when Slow Motion is active)
     const activeFruits = this.fruitPool.getActiveItems();
     for (let i = activeFruits.length - 1; i >= 0; i--) {
       const fruit = activeFruits[i];
-      fruit.update(dt, screenWidth, screenHeight);
+      fruit.update(physicsDt, screenWidth, screenHeight);
 
       if (!fruit.active) {
         if (!fruit.sliced && !fruit.missedHandled) {
@@ -145,11 +197,11 @@ export class FruitManager {
       }
     }
 
-    // 4. Active hazards and sliced fruit pieces
+    // 4. Active hazards and sliced fruit pieces (slowed physics when Slow Motion is active)
     const activeBombs = this.bombPool.getActiveItems();
     for (let i = activeBombs.length - 1; i >= 0; i--) {
       const bomb = activeBombs[i];
-      bomb.update(dt, screenWidth, screenHeight);
+      bomb.update(physicsDt, screenWidth, screenHeight);
       if (!bomb.active) {
         this.bombPool.release(bomb);
       }
@@ -158,9 +210,28 @@ export class FruitManager {
     const activeSliced = this.slicedFruitPool.getActiveItems();
     for (let i = activeSliced.length - 1; i >= 0; i--) {
       const piece = activeSliced[i];
-      piece.update(dt, screenHeight);
+      piece.update(physicsDt, screenHeight);
       if (!piece.active) {
         this.slicedFruitPool.release(piece);
+      }
+    }
+
+    // 5. Active power-up entities and sliced power-up pieces
+    const activePowerUps = this.powerUpPool.getActiveItems();
+    for (let i = activePowerUps.length - 1; i >= 0; i--) {
+      const powerUp = activePowerUps[i];
+      powerUp.update(physicsDt, screenWidth, screenHeight);
+      if (!powerUp.active) {
+        this.powerUpPool.release(powerUp);
+      }
+    }
+
+    const activeSlicedPowerUps = this.slicedPowerUpPool.getActiveItems();
+    for (let i = activeSlicedPowerUps.length - 1; i >= 0; i--) {
+      const piece = activeSlicedPowerUps[i];
+      piece.update(physicsDt, screenHeight);
+      if (!piece.active) {
+        this.slicedPowerUpPool.release(piece);
       }
     }
   }
@@ -179,8 +250,12 @@ export class FruitManager {
     }
 
     // Determine fruits in wave based on active mode and difficulty
+    const isFrenzy = this.powerUpManager ? this.powerUpManager.isFrenzyActive() : false;
     let waveCount = 1;
-    if (this.mode === 'challenge') {
+
+    if (isFrenzy) {
+      waveCount = Math.floor(randomRange(3, 6));
+    } else if (this.mode === 'challenge') {
       if (this.difficulty < 0.20) {
         waveCount = Math.random() < 0.35 ? 2 : 1;
       } else if (this.difficulty < 0.50) {
@@ -217,29 +292,35 @@ export class FruitManager {
       }
     }
 
-    // Ensure we do not exceed active cap
-    const allowed = Math.max(1, this.config.maxActiveCap - activeCount);
+    // Ensure we do not exceed active cap (unless in frenzy, which allows higher cap)
+    const effectiveCap = isFrenzy ? this.config.maxActiveCap + 4 : this.config.maxActiveCap;
+    const allowed = Math.max(1, effectiveCap - activeCount);
     waveCount = Math.min(waveCount, allowed);
+
+    const shouldSpawnRecovery = this.isRecoveryFruitEligible();
+    if (shouldSpawnRecovery) {
+      this.recoveryFruitCooldown = 35;
+    }
 
     // Pick wave strategy
     if (waveCount === 1) {
-      this.spawnSingleFruit(screenWidth, screenHeight);
+      this.spawnSingleFruit(screenWidth, screenHeight, shouldSpawnRecovery);
     } else if (waveCount === 2) {
       if (Math.random() < 0.6) {
-        this.spawnCrossingDualWave(screenWidth, screenHeight);
+        this.spawnCrossingDualWave(screenWidth, screenHeight, shouldSpawnRecovery);
       } else {
-        this.spawnStaggeredWave(2, screenWidth, screenHeight);
+        this.spawnStaggeredWave(2, screenWidth, screenHeight, shouldSpawnRecovery);
       }
     } else {
       if (Math.random() < 0.5) {
-        this.spawnSpreadWave(waveCount, screenWidth, screenHeight);
+        this.spawnSpreadWave(waveCount, screenWidth, screenHeight, shouldSpawnRecovery);
       } else {
-        this.spawnStaggeredWave(waveCount, screenWidth, screenHeight);
+        this.spawnStaggeredWave(waveCount, screenWidth, screenHeight, shouldSpawnRecovery);
       }
     }
 
-    // Scale hazardous bomb appearance using mode configuration
-    if (this.allowBombs && this.modeConfig?.bombProbability) {
+    // Scale hazardous bomb appearance using mode configuration (suppressed during Frenzy)
+    if (this.allowBombs && !isFrenzy && this.modeConfig?.bombProbability) {
       const bp = this.modeConfig.bombProbability;
       if (this.difficulty >= bp.minDifficulty) {
         const progress = (this.difficulty - bp.minDifficulty) / Math.max(0.01, 1.0 - bp.minDifficulty);
@@ -249,6 +330,22 @@ export class FruitManager {
           this.pendingLaunches.push({
             delay: randomRange(0.12, 0.38),
             isBomb: true,
+          });
+        }
+      }
+    }
+
+    // Rare balanced Power-Up launch check
+    if (this.powerUpManager && !isFrenzy) {
+      const activePowerUpCount = this.powerUpPool.getActiveCount();
+      if (this.powerUpManager.canSpawnPowerUp(activePowerUpCount > 0)) {
+        if (Math.random() < 0.28) {
+          this.powerUpManager.consumeSpawnOpportunity();
+          const powerUpType = this.powerUpManager.selectPowerUpType();
+          this.pendingLaunches.push({
+            delay: randomRange(0.18, 0.42),
+            isPowerUp: true,
+            powerUpType,
           });
         }
       }
@@ -275,7 +372,7 @@ export class FruitManager {
    * Calculates ballistic trajectory guaranteeing fruits stay within visible canvas bounds
    * with generous horizontal travel space optimized for landscape viewports.
    */
-  computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, fruitType = null) {
+  computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, fruitType = null, isRecoveryFruit = false) {
     const minX = Math.max(50, screenWidth * 0.08);
     const maxX = Math.min(screenWidth - 50, screenWidth * 0.92);
     const safeXStart = Math.max(minX, Math.min(maxX, xStart));
@@ -330,41 +427,48 @@ export class FruitManager {
       gravity,
       type: fruitType,
       rotationSpeed,
+      isRecoveryFruit: Boolean(isRecoveryFruit),
     };
   }
 
-  spawnSingleFruit(screenWidth, screenHeight) {
+  spawnSingleFruit(screenWidth, screenHeight, isRecovery = false) {
     const xStart = screenWidth * randomRange(0.14, 0.86);
     const targetApexX = screenWidth * (xStart < screenWidth * 0.5 ? randomRange(0.42, 0.76) : randomRange(0.24, 0.58));
     const targetApexY = this.getSafeApexY(screenHeight);
-    const type = randomChoice(AVAILABLE_FRUIT_TYPES);
+    const type = isRecovery ? FRUIT_TYPES.DRAGON_FRUIT : randomChoice(AVAILABLE_FRUIT_TYPES);
 
-    const params = this.computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, type);
+    const params = this.computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, type, isRecovery);
     this.launchFruit(params);
   }
 
-  spawnCrossingDualWave(screenWidth, screenHeight) {
+  spawnCrossingDualWave(screenWidth, screenHeight, isRecovery = false) {
     const types = this.pickDistinctFruitTypes(2);
+    if (isRecovery) {
+      types[0] = FRUIT_TYPES.DRAGON_FRUIT;
+    }
 
     // Fruit 1: Launched from left side aiming toward right center
     const x1 = screenWidth * randomRange(0.10, 0.26);
     const apexX1 = screenWidth * randomRange(0.48, 0.74);
     const apexY1 = this.getSafeApexY(screenHeight, 0.03, 0);
-    const params1 = this.computeLaunchParams(x1, apexX1, apexY1, screenWidth, screenHeight, types[0]);
+    const params1 = this.computeLaunchParams(x1, apexX1, apexY1, screenWidth, screenHeight, types[0], isRecovery);
 
     // Fruit 2: Launched from right side aiming toward left center
     const x2 = screenWidth * randomRange(0.74, 0.90);
     const apexX2 = screenWidth * randomRange(0.26, 0.52);
     const apexY2 = this.getSafeApexY(screenHeight, 0, -0.03);
-    const params2 = this.computeLaunchParams(x2, apexX2, apexY2, screenWidth, screenHeight, types[1]);
+    const params2 = this.computeLaunchParams(x2, apexX2, apexY2, screenWidth, screenHeight, types[1], false);
 
     this.launchFruit(params1);
     // Slight stagger of 80ms for natural feel
     this.pendingLaunches.push({ delay: 0.08, params: params2 });
   }
 
-  spawnSpreadWave(count, screenWidth, screenHeight) {
+  spawnSpreadWave(count, screenWidth, screenHeight, isRecovery = false) {
     const types = this.pickDistinctFruitTypes(count);
+    if (isRecovery && types.length > 0) {
+      types[0] = FRUIT_TYPES.DRAGON_FRUIT;
+    }
     const centerZoneX = screenWidth * randomRange(0.36, 0.64);
     const spacing = Math.min(100, (screenWidth * 0.65) / count);
 
@@ -373,8 +477,9 @@ export class FruitManager {
       const xStart = centerZoneX + offset;
       const targetApexX = xStart + offset * 0.45;
       const targetApexY = this.getSafeApexY(screenHeight);
+      const isThisRecovery = i === 0 && isRecovery;
 
-      const params = this.computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, types[i]);
+      const params = this.computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, types[i], isThisRecovery);
 
       if (i === 0) {
         this.launchFruit(params);
@@ -384,8 +489,11 @@ export class FruitManager {
     }
   }
 
-  spawnStaggeredWave(count, screenWidth, screenHeight) {
+  spawnStaggeredWave(count, screenWidth, screenHeight, isRecovery = false) {
     const types = this.pickDistinctFruitTypes(count);
+    if (isRecovery && types.length > 0) {
+      types[0] = FRUIT_TYPES.DRAGON_FRUIT;
+    }
     const baseSide = Math.random() < 0.5 ? 'left' : 'right';
 
     for (let i = 0; i < count; i++) {
@@ -401,8 +509,9 @@ export class FruitManager {
       }
 
       const targetApexY = this.getSafeApexY(screenHeight);
+      const isThisRecovery = i === 0 && isRecovery;
 
-      const params = this.computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, types[i]);
+      const params = this.computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, types[i], isThisRecovery);
 
       if (i === 0) {
         this.launchFruit(params);
@@ -421,7 +530,8 @@ export class FruitManager {
       params.gravity,
       params.type,
       params.rotationSpeed,
-      performance.now()
+      performance.now(),
+      Boolean(params.isRecoveryFruit)
     );
     if (this.onFruitLaunch) {
       this.onFruitLaunch(params);
@@ -445,6 +555,28 @@ export class FruitManager {
     );
     if (this.onBombLaunch) {
       this.onBombLaunch();
+    }
+  }
+
+  launchPowerUp(screenWidth, screenHeight, type) {
+    const xStart = screenWidth * randomRange(0.20, 0.80);
+    const targetApexX = screenWidth * (xStart < screenWidth * 0.5 ? randomRange(0.44, 0.74) : randomRange(0.26, 0.56));
+    const targetApexY = this.getSafeApexY(screenHeight, 0.04, -0.02);
+    const params = this.computeLaunchParams(xStart, targetApexX, targetApexY, screenWidth, screenHeight, null, false);
+
+    this.powerUpPool.obtain(
+      params.x,
+      params.y,
+      params.vx,
+      params.vy,
+      params.gravity,
+      type,
+      params.rotationSpeed * 0.85,
+      performance.now()
+    );
+
+    if (this.onPowerUpLaunch) {
+      this.onPowerUpLaunch(type, params);
     }
   }
 
@@ -535,6 +667,64 @@ export class FruitManager {
     this.fruitPool.release(fruit);
   }
 
+  /**
+   * Slices an active power-up orb into two separating halves with outward impulses.
+   */
+  slicePowerUp(powerUp, cutSegment, _hitPoint = null) {
+    if (!powerUp.active) return;
+
+    powerUp.sliced = true;
+    powerUp.active = false;
+
+    const { p1, p2 } = cutSegment;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const sliceAngle = Math.atan2(dy, dx);
+    const len = Math.sqrt(dx * dx + dy * dy);
+
+    const tx = len > 0 ? dx / len : 1;
+    const ty = len > 0 ? dy / len : 0;
+    const nx = len > 0 ? -dy / len : 0;
+    const ny = len > 0 ? dx / len : 1;
+
+    const swipeSpeed = cutSegment?.speed || 320;
+    const forwardBias = Math.min(180, Math.max(50, swipeSpeed * 0.16));
+    const forwardVx = tx * forwardBias;
+    const forwardVy = ty * forwardBias;
+
+    const sepSpeed = 240 + (Math.random() - 0.5) * 40;
+    const spinMagnitude = 5.0 + (Math.random() - 0.5) * 1.5;
+    const initialGap = 4;
+
+    this.slicedPowerUpPool.obtain(
+      powerUp.x - nx * initialGap,
+      powerUp.y - ny * initialGap,
+      powerUp.vx + forwardVx - nx * sepSpeed,
+      powerUp.vy + forwardVy - ny * sepSpeed - 35,
+      powerUp.gravity,
+      powerUp.radius,
+      sliceAngle,
+      'top',
+      powerUp.type,
+      -spinMagnitude
+    );
+
+    this.slicedPowerUpPool.obtain(
+      powerUp.x + nx * initialGap,
+      powerUp.y + ny * initialGap,
+      powerUp.vx + forwardVx + nx * sepSpeed,
+      powerUp.vy + forwardVy + ny * sepSpeed - 35,
+      powerUp.gravity,
+      powerUp.radius,
+      sliceAngle,
+      'bottom',
+      powerUp.type,
+      spinMagnitude
+    );
+
+    this.powerUpPool.release(powerUp);
+  }
+
   render(ctx) {
     const fruits = this.fruitPool.getActiveItems();
     for (let i = 0; i < fruits.length; i++) {
@@ -546,9 +736,19 @@ export class FruitManager {
       bombs[i].render(ctx);
     }
 
+    const powerUps = this.powerUpPool.getActiveItems();
+    for (let i = 0; i < powerUps.length; i++) {
+      powerUps[i].render(ctx);
+    }
+
     const sliced = this.slicedFruitPool.getActiveItems();
     for (let i = 0; i < sliced.length; i++) {
       sliced[i].render(ctx);
+    }
+
+    const slicedPowerUps = this.slicedPowerUpPool.getActiveItems();
+    for (let i = 0; i < slicedPowerUps.length; i++) {
+      slicedPowerUps[i].render(ctx);
     }
   }
 
@@ -556,10 +756,13 @@ export class FruitManager {
     this.fruitPool.releaseAll();
     this.bombPool.releaseAll();
     this.slicedFruitPool.releaseAll();
+    this.powerUpPool.releaseAll();
+    this.slicedPowerUpPool.releaseAll();
     this.pendingLaunches = [];
     this.sessionTime = 0;
     this.waveTimer = this.config.initialDelay;
     this.difficulty = 0;
     this.stopSpawning = false;
+    this.recoveryFruitCooldown = 25;
   }
 }

@@ -23,8 +23,18 @@ export function getSegmentCircleIntersection(x1, y1, x2, y2, cx, cy, radius) {
   const lenSq = dx * dx + dy * dy;
 
   if (lenSq === 0) {
-    if (pointInCircle(x1, y1, cx, cy, radius)) {
-      return { hit: true, hitX: x1, hitY: y1, t: 0 };
+    const distSq = distanceSquared(x1, y1, cx, cy);
+    if (distSq <= radius * radius) {
+      const distToCenter = Math.sqrt(distSq);
+      const offsetRatio = radius > 0 ? distToCenter / radius : 0;
+      return {
+        hit: true,
+        hitX: x1,
+        hitY: y1,
+        t: 0,
+        distToCenter,
+        offsetRatio,
+      };
     }
     return null;
   }
@@ -36,12 +46,17 @@ export function getSegmentCircleIntersection(x1, y1, x2, y2, cx, cy, radius) {
   const nearestX = x1 + t * dx;
   const nearestY = y1 + t * dy;
 
-  if (pointInCircle(nearestX, nearestY, cx, cy, radius)) {
+  const distSq = distanceSquared(nearestX, nearestY, cx, cy);
+  if (distSq <= radius * radius) {
+    const distToCenter = Math.sqrt(distSq);
+    const offsetRatio = radius > 0 ? distToCenter / radius : 0;
     return {
       hit: true,
       hitX: nearestX,
       hitY: nearestY,
       t,
+      distToCenter,
+      offsetRatio,
     };
   }
 

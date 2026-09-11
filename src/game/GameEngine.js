@@ -10,7 +10,10 @@ import { FruitManager } from './FruitManager.js';
 import { ParticleManager } from './ParticleManager.js';
 import { CollisionManager } from './CollisionManager.js';
 import { AudioManager } from './AudioManager.js';
+import { PowerUpManager } from './PowerUpManager.js';
+import { initPowerUpSprites, POWER_UP_TYPES } from '../assets/PowerUpSprites.js';
 import { getDevicePixelRatio } from '../utils/device.js';
+import { lerp } from '../utils/math.js';
 
 export class GameEngine {
   constructor(canvas, gameState) {
@@ -22,6 +25,9 @@ export class GameEngine {
     this.logicalWidth = 0;
     this.logicalHeight = 0;
 
+    // Pre-warm high-DPI procedural vector power-up sprites
+    initPowerUpSprites();
+
     // Subsystems
     this.inputManager = new InputManager(canvas);
     this.bladeTrail = new BladeTrail(this.inputManager);
@@ -29,13 +35,38 @@ export class GameEngine {
     this.particleManager = new ParticleManager();
     this.collisionManager = new CollisionManager();
     this.audioManager = new AudioManager();
+    this.powerUpManager = new PowerUpManager();
 
-    // Synchronize mode configuration with FruitManager
+    // Wire PowerUpManager with GameState, FruitManager, and audio callbacks
+    this.powerUpManager.setGameState(this.gameState);
+    this.fruitManager.setPowerUpManager(this.powerUpManager);
+    this.gameState.setPowerUpManager(this.powerUpManager);
+
+    this.powerUpManager.onActivate = (type, _config, _isInstant) => {
+      this.audioManager.init();
+      this.audioManager.playPowerUpActivate(type);
+    };
+    this.powerUpManager.onExpire = (type, _config) => {
+      this.audioManager.playPowerUpExpire(type);
+    };
+
+    // Synchronize mode configuration with FruitManager and pass GameState
+    this.fruitManager.setGameState(this.gameState);
     this.modeUnsubscribe = this.gameState.subscribeMode((_mode, config) => {
       this.fruitManager.setModeConfig(config);
     });
 
-    // Audio feedback for fruit throws and bomb launches
+    // Life recovery events (milestone or bonus recovery fruit)
+    this.lifeRecoveredUnsubscribe = this.gameState.subscribeLifeRecovered((event) => {
+      this.audioManager.init();
+      this.audioManager.playLifeRecovered();
+      const posX = Number.isFinite(event.x) ? event.x : (this.logicalWidth > 0 ? this.logicalWidth * 0.5 : 400);
+      const posY = Number.isFinite(event.y) ? event.y : (this.logicalHeight > 0 ? this.logicalHeight * 0.28 : 150);
+      const text = event.source === 'milestone' ? '+1 LIFE (MILESTONE)!' : '+1 LIFE RECOVERED!';
+      this.particleManager.spawnLifeRecoveredEffects(posX, posY, text);
+    });
+
+    // Audio feedback for fruit throws, bomb launches, and power-up launches
     this.fruitManager.onFruitLaunch = () => {
       this.audioManager.init();
       this.audioManager.playFruitThrow();
@@ -43,6 +74,10 @@ export class GameEngine {
     this.fruitManager.onBombLaunch = () => {
       this.audioManager.init();
       this.audioManager.playBombThrow();
+    };
+    this.fruitManager.onPowerUpLaunch = () => {
+      this.audioManager.init();
+      this.audioManager.playSoundBuffer('throwFruit', { volume: 0.75, playbackRate: 1.25 });
     };
 
     // Countdown audio warnings for timed modes (Zen / Arcade)
@@ -53,6 +88,26 @@ export class GameEngine {
         this.audioManager.playTimeWarning();
       } else if (sec === 0) {
         this.audioManager.playTimeUp();
+      }
+    });
+
+    // Fever mode visual state & event subscription
+    this.feverVignetteAlpha = 0;
+    this.feverPulseTime = 0;
+    this.feverUnsubscribe = this.gameState.subscribeFever((isFeverActive, details) => {
+      if (isFeverActive) {
+        if (!details?.isProgress) {
+          this.audioManager.init();
+          this.audioManager.playFeverActivate();
+          this.audioManager.startFeverMusic();
+          const cx = this.logicalWidth > 0 ? this.logicalWidth * 0.5 : 400;
+          const cy = this.logicalHeight > 0 ? this.logicalHeight * 0.35 : 200;
+          this.particleManager.spawnScorePopup(cx, cy, 'FEVER MODE! 2X MULTIPLIER', '#FBBF24', 3);
+        }
+      } else {
+        if (!details?.isProgress && this.audioManager.isFeverPlaying) {
+          this.audioManager.stopFeverMusic();
+        }
       }
     });
 
@@ -190,18 +245,28 @@ export class GameEngine {
   resize() {
     if (!this.canvas) return;
 
-    const rect = this.canvas.getBoundingClientRect();
-    this.logicalWidth = rect.width;
-    this.logicalHeight = rect.height;
+    const container = this.canvas.parentElement;
+    let width = container ? container.clientWidth : 0;
+    let height = container ? container.clientHeight : 0;
+
+    if (width <= 0 || height <= 0) {
+      const rect = this.canvas.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+    }
+
+    if (width <= 0 || height <= 0) {
+      width = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 800;
+      height = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 600;
+    }
+
+    this.logicalWidth = width;
+    this.logicalHeight = height;
     this.dpr = getDevicePixelRatio();
 
     // Scale canvas buffer for high-DPI crisp rendering
-    this.canvas.width = Math.max(1, Math.round(rect.width * this.dpr));
-    this.canvas.height = Math.max(1, Math.round(rect.height * this.dpr));
-
-    // Explicit CSS dimensions to eliminate fractional rendering blur
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
+    this.canvas.width = Math.max(1, Math.round(width * this.dpr));
+    this.canvas.height = Math.max(1, Math.round(height * this.dpr));
 
     // Normalize context coordinate system to match CSS pixels
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -209,7 +274,7 @@ export class GameEngine {
     this.ctx.imageSmoothingQuality = 'high';
 
     // Pre-render static background into offscreen buffer
-    this.updateBackgroundCache(rect.width, rect.height);
+    this.updateBackgroundCache(width, height);
   }
 
   start() {
@@ -251,11 +316,19 @@ export class GameEngine {
   }
 
   reset() {
+    this.isPaused = false;
     this.audioManager.stopBombFuse();
+    this.audioManager.stopFeverMusic();
     this.fruitManager.setModeConfig(this.gameState.getModeConfig());
     this.fruitManager.reset();
+    this.powerUpManager.reset();
     this.particleManager.reset();
+    this.collisionManager.reset();
     this.bladeTrail.reset();
+    this.bladeTrail.setBladeBoost(false);
+    this.bladeTrail.setFever(false);
+    this.feverVignetteAlpha = 0;
+    this.feverPulseTime = 0;
     this.screenShake = 0;
     this.missVignetteAlpha = 0;
     this.isGameOverTransition = false;
@@ -328,6 +401,17 @@ export class GameEngine {
       }
 
       this.gameState.update(dt);
+      this.powerUpManager.update(dt);
+
+      const isBladeBoost = this.powerUpManager.isBladeBoostActive();
+      const isFever = this.gameState.isFeverActive;
+      this.bladeTrail.setBladeBoost(isBladeBoost);
+      this.bladeTrail.setFever(isFever);
+
+      // Smooth Fever mode visual intensity interpolation
+      const targetFeverAlpha = isFever ? 1.0 : 0.0;
+      this.feverVignetteAlpha = lerp(this.feverVignetteAlpha, targetFeverAlpha, Math.min(1.0, dt * 4.0));
+      this.feverPulseTime += dt;
 
       // Check if round timer reached 0 in timed modes (e.g. Zen or Arcade)
       if (this.gameState.hasTimer() && this.gameState.timeRemaining <= 0) {
@@ -340,14 +424,43 @@ export class GameEngine {
         this.collisionManager.checkSliceCollisions(
           cuts,
           this.fruitManager,
-          (fruit, cutSegment, hitPoint) => {
-            // 1. Scoring update decoupled from frame loop
-            const result = this.gameState.registerSlice(fruit.type);
+          (fruit, cutSegment, hitPoint, _totalHits, hitMetadata = {}) => {
+            const hitX = hitPoint ? hitPoint.x : fruit.x;
+            const hitY = hitPoint ? hitPoint.y : fruit.y;
 
-            // 2. Play layered authentic slice audio with fruit-specific timbre and combo chord
+            // Check if it's a special recovery fruit
+            if (fruit.isRecoveryFruit) {
+              if (this.gameState.lives !== null && this.gameState.lives < this.gameState.maxLives) {
+                this.gameState.recoverLife(1, 'recovery_fruit', { x: hitX, y: hitY });
+              } else {
+                // Slicing at maximum health awards a +50 bonus
+                this.gameState.addScore(50);
+                this.particleManager.spawnScorePopup(hitX, hitY - 18, '+50 BONUS!', '#10B981');
+              }
+            }
+
+            // 1. Scoring update with full arcade metadata (perfect slice & multi-slice chain)
+            const result = this.gameState.registerSlice(fruit.type, hitMetadata);
+
+            // 2. Play layered authentic slice audio with fruit-specific timbre
             this.audioManager.playFruitSlice(fruit.type, result.combo);
-            if (result.isCombo) {
+
+            // Special Perfect Slice audio and visual feedback
+            if (result.isPerfectSlice) {
+              this.audioManager.playPerfectSlice();
+              this.particleManager.spawnPerfectSliceEffects(hitX, hitY);
+            }
+
+            // Multi-slice audio and visual feedback (when 2+ fruits cut in continuous swipe)
+            if (result.multiSliceCount >= 2) {
+              this.audioManager.playMultiSlice(result.multiSliceCount);
+              this.particleManager.spawnMultiSliceEffects(hitX, hitY, result.multiSliceCount);
+            } else if (result.isCombo && !result.isPerfectSlice) {
               this.audioManager.playCombo(result.combo);
+            }
+
+            if (isBladeBoost) {
+              this.audioManager.playCriticalSlice();
             }
 
             // 3. Directional juice particles, pulp, fragments, sparkles, and splash flash
@@ -359,23 +472,27 @@ export class GameEngine {
               fruit.radius,
               hitPoint,
               { vx: fruit.vx, vy: fruit.vy },
-              result.combo
+              result.combo,
+              isBladeBoost,
+              result.isFever
             );
 
-            // 4. Floating canvas score / combo popup centered on slice contact
+            // 4. Floating canvas score popup centered on slice contact
+            const multTag = result.isDoubleScore ? ' [2X]' : '';
+            const feverTag = result.isFever ? ' [FEVER]' : '';
             const popupText = result.multiplier > 1
-              ? `+${result.pointsEarned} (${result.combo}x)`
-              : `+${result.pointsEarned}`;
-            const popupColor = result.multiplier >= 3
+              ? `+${result.pointsEarned} (${result.multiplier}x)${multTag}${feverTag}`
+              : `+${result.pointsEarned}${multTag}${feverTag}`;
+            const popupColor = result.isFever
               ? '#FBBF24'
-              : (result.multiplier === 2 ? '#38BDF8' : '#F8FAFC');
-            const popupX = hitPoint ? hitPoint.x : fruit.x;
-            const popupY = (hitPoint ? hitPoint.y : fruit.y) - 14;
-            this.particleManager.spawnScorePopup(popupX, popupY, popupText, popupColor, result.combo);
+              : (result.isDoubleScore
+                  ? '#FBBF24'
+                  : (result.multiplier >= 3 ? '#FBBF24' : (result.multiplier === 2 ? '#38BDF8' : '#F8FAFC')));
+            this.particleManager.spawnScorePopup(hitX, hitY - 14, popupText, popupColor, result.combo);
 
             // 5. Crisp physical screen micro-jolt with subtle combo scaling
-            const comboShakeBonus = Math.min(1.8, ((result.combo || 1) - 1) * 0.45);
-            this.screenShake = Math.min(this.screenShake + 3.0 + comboShakeBonus, 5.8);
+            const comboShakeBonus = Math.min(2.2, ((result.combo || 1) - 1) * 0.45 + (result.isPerfectSlice ? 0.9 : 0) + (result.multiSliceCount >= 2 ? 1.0 : 0));
+            this.screenShake = Math.min(this.screenShake + 3.0 + comboShakeBonus, 6.5);
           },
           (bomb, _cutSegment, hitPoint) => {
             // 1. Stop fuse and play visceral sub-bass explosion
@@ -401,7 +518,35 @@ export class GameEngine {
             if (penalty.isGameOver) {
               this.triggerGameOverSequence();
             }
-          }
+          },
+          (powerUp, _cutSegment, hitPoint) => {
+            // Power-up sliced!
+            this.audioManager.init();
+            this.audioManager.playPowerUpPickup(powerUp.type);
+
+            const hitX = hitPoint ? hitPoint.x : powerUp.x;
+            const hitY = hitPoint ? hitPoint.y : powerUp.y;
+
+            // 1. Spawn vibrant particle burst, shockwave, and floating banner
+            this.particleManager.spawnPowerUpBurst(hitX, hitY, powerUp.type);
+
+            // 2. Activate power-up
+            this.powerUpManager.activate(powerUp.type);
+
+            // 3. If Life Restore: instant life recovery or bonus score
+            if (powerUp.type === POWER_UP_TYPES.LIFE_RESTORE) {
+              if (this.gameState.hasLives && this.gameState.hasLives() && this.gameState.lives < this.gameState.maxLives) {
+                this.gameState.recoverLife(1, 'powerup_life', { x: hitX, y: hitY });
+              } else {
+                this.gameState.addScore(100);
+                this.particleManager.spawnScorePopup(hitX, hitY - 22, '+100 BONUS!', '#10B981', 2);
+              }
+            }
+
+            // 4. Crisp screen micro-jolt
+            this.screenShake = Math.max(this.screenShake, 5.5);
+          },
+          isBladeBoost
         );
       }
 
@@ -428,10 +573,11 @@ export class GameEngine {
     this.audioManager.init();
     this.audioManager.playFruitMissed();
 
-    // 2. Spawn red missed 'X' marker particle at the bottom where fruit dropped
+    // 2. Spawn red missed 'X' marker particle and floating penalty popup at the bottom where fruit dropped
     const markerX = Math.max(30, Math.min(this.logicalWidth - 30, fruit.x));
     const markerY = this.logicalHeight - 25;
     this.particleManager.spawnMissedMarker(markerX, markerY);
+    this.particleManager.spawnScorePopup(markerX, markerY - 20, '-1 LIFE', '#EF4444');
 
     // 3. Tactile feedback: micro screen shake & bottom crimson flash
     this.screenShake = Math.max(this.screenShake, 4.2);
@@ -456,6 +602,9 @@ export class GameEngine {
   }
 
   render() {
+    if (this.logicalWidth <= 0 || this.logicalHeight <= 0) {
+      this.resize();
+    }
     const w = this.logicalWidth;
     const h = this.logicalHeight;
 
@@ -484,7 +633,13 @@ export class GameEngine {
     // 3. Render active blade trail over game objects
     this.bladeTrail.render(this.ctx);
 
-    // 4. Render subtle crimson miss impact vignette along bottom
+    // 4. Subtle active power-up screen edge vignettes
+    this.renderPowerUpScreenEffects(w, h);
+
+    // 5. Subtle Fever mode background aura and dojo lantern surge
+    this.renderFeverScreenEffects(w, h);
+
+    // 6. Render subtle crimson miss impact vignette along bottom
     if (this.missVignetteAlpha > 0.01) {
       const missGrad = this.ctx.createLinearGradient(0, h, 0, h - 120);
       missGrad.addColorStop(0, `rgba(239, 68, 68, ${this.missVignetteAlpha * 0.42})`);
@@ -496,6 +651,125 @@ export class GameEngine {
     if (hasShake) {
       this.ctx.restore();
     }
+  }
+
+  /**
+   * Subtle ambient screen edge vignettes representing active power-up enchantments.
+   * Rendered via high-performance GPU canvas radial gradients.
+   */
+  renderPowerUpScreenEffects(w, h) {
+    if (!this.powerUpManager) return;
+
+    const now = performance.now();
+
+    // 1. Slow Motion Frost Vignette
+    if (this.powerUpManager.isSlowMotionActive().active) {
+      const freezeGrad = this.ctx.createRadialGradient(
+        w * 0.5,
+        h * 0.5,
+        Math.min(w, h) * 0.40,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.76
+      );
+      freezeGrad.addColorStop(0, 'rgba(0, 240, 255, 0)');
+      freezeGrad.addColorStop(0.80, 'rgba(0, 240, 255, 0.08)');
+      freezeGrad.addColorStop(1, 'rgba(2, 132, 199, 0.28)');
+
+      this.ctx.fillStyle = freezeGrad;
+      this.ctx.fillRect(0, 0, w, h);
+    }
+
+    // 2. Frenzy Neon Pulse Border
+    if (this.powerUpManager.isFrenzyActive()) {
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.009);
+      const frenzyGrad = this.ctx.createRadialGradient(
+        w * 0.5,
+        h * 0.5,
+        Math.min(w, h) * 0.42,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.76
+      );
+      frenzyGrad.addColorStop(0, 'rgba(236, 72, 153, 0)');
+      frenzyGrad.addColorStop(0.82, `rgba(236, 72, 153, ${0.06 + pulse * 0.08})`);
+      frenzyGrad.addColorStop(1, `rgba(168, 85, 247, ${0.20 + pulse * 0.12})`);
+
+      this.ctx.fillStyle = frenzyGrad;
+      this.ctx.fillRect(0, 0, w, h);
+    }
+
+    // 3. Double Score Golden Shimmer
+    if (this.powerUpManager.isDoubleScoreActive()) {
+      const shimmer = 0.5 + 0.5 * Math.sin(now * 0.006);
+      const doubleGrad = this.ctx.createRadialGradient(
+        w * 0.5,
+        h * 0.5,
+        Math.min(w, h) * 0.45,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.78
+      );
+      doubleGrad.addColorStop(0, 'rgba(245, 158, 11, 0)');
+      doubleGrad.addColorStop(0.85, `rgba(245, 158, 11, ${0.08 + shimmer * 0.06})`);
+      doubleGrad.addColorStop(1, `rgba(251, 191, 36, ${0.22 + shimmer * 0.08})`);
+
+      this.ctx.fillStyle = doubleGrad;
+      this.ctx.fillRect(0, 0, w, h);
+    }
+
+    // 4. Blade Boost Flaming Perimeter
+    if (this.powerUpManager.isBladeBoostActive()) {
+      const flame = 0.5 + 0.5 * Math.sin(now * 0.014);
+      const bladeGrad = this.ctx.createRadialGradient(
+        w * 0.5,
+        h * 0.5,
+        Math.min(w, h) * 0.42,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.76
+      );
+      bladeGrad.addColorStop(0, 'rgba(239, 68, 68, 0)');
+      bladeGrad.addColorStop(0.82, `rgba(249, 115, 22, ${0.08 + flame * 0.08})`);
+      bladeGrad.addColorStop(1, `rgba(239, 68, 68, ${0.22 + flame * 0.12})`);
+
+      this.ctx.fillStyle = bladeGrad;
+      this.ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  /**
+   * Subtle background intensity change and warm dojo lantern aura during Fever mode.
+   * Smoothly fades in and out with high-performance radial gradients.
+   */
+  renderFeverScreenEffects(w, h) {
+    if (this.feverVignetteAlpha <= 0.01) return;
+
+    const pulse = 0.5 + 0.5 * Math.sin(this.feverPulseTime * 4.5);
+    const alpha = this.feverVignetteAlpha * (0.16 + 0.08 * pulse);
+
+    // 1. Subtle warm amber/crimson ambient glow around perimeter
+    const feverGrad = this.ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.5,
+      Math.min(w, h) * 0.38,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.74
+    );
+    feverGrad.addColorStop(0, 'rgba(245, 158, 11, 0)');
+    feverGrad.addColorStop(0.70, `rgba(245, 158, 11, ${alpha * 0.45})`);
+    feverGrad.addColorStop(1, `rgba(225, 29, 72, ${alpha * 0.85})`);
+
+    this.ctx.fillStyle = feverGrad;
+    this.ctx.fillRect(0, 0, w, h);
+
+    // 2. Soft top dojo lantern surge
+    const topLantern = this.ctx.createLinearGradient(0, 0, 0, 160);
+    topLantern.addColorStop(0, `rgba(251, 191, 36, ${alpha * 0.55})`);
+    topLantern.addColorStop(1, 'rgba(251, 191, 36, 0)');
+    this.ctx.fillStyle = topLantern;
+    this.ctx.fillRect(0, 0, w, 160);
   }
 
   destroy() {
@@ -515,9 +789,20 @@ export class GameEngine {
     if (this.audioManager) {
       this.audioManager.destroy();
     }
+    if (this.powerUpManager) {
+      this.powerUpManager.destroy();
+    }
     if (this.modeUnsubscribe) {
       this.modeUnsubscribe();
       this.modeUnsubscribe = null;
+    }
+    if (this.lifeRecoveredUnsubscribe) {
+      this.lifeRecoveredUnsubscribe();
+      this.lifeRecoveredUnsubscribe = null;
+    }
+    if (this.feverUnsubscribe) {
+      this.feverUnsubscribe();
+      this.feverUnsubscribe = null;
     }
     if (this.timeUnsubscribe) {
       this.timeUnsubscribe();

@@ -7,6 +7,7 @@ import { Particle } from '../entities/Particle.js';
 import { ObjectPool } from '../utils/pool.js';
 import { randomRange } from '../utils/math.js';
 import { FRUIT_CONFIGS, FRUIT_TYPES } from '../assets/FruitSprites.js';
+import { POWER_UP_CONFIGS, POWER_UP_TYPES } from '../assets/PowerUpSprites.js';
 
 export class ParticleManager {
   constructor() {
@@ -46,7 +47,9 @@ export class ParticleManager {
     radius = 40,
     hitPoint = null,
     fruitVelocity = null,
-    combo = 1
+    combo = 1,
+    isBladeBoost = false,
+    isFever = false
   ) {
     const config = FRUIT_CONFIGS[fruitType] || FRUIT_CONFIGS[FRUIT_TYPES.WATERMELON];
     const { juiceColor, pulpColor, rindColor, particleProfile } = config;
@@ -247,6 +250,77 @@ export class ParticleManager {
         radius * 1.9
       );
     }
+
+    // 9. Blade Boost Critical Impact Feedback
+    if (isBladeBoost) {
+      // Golden impact starburst
+      this.obtainParticle(
+        contactX,
+        contactY,
+        0,
+        0,
+        0,
+        radius * 1.3,
+        '#FDE047',
+        0.14,
+        'impact_spark',
+        cutAngle
+      );
+
+      // Fiery amber shockwave ring
+      this.obtainParticle(
+        contactX,
+        contactY,
+        0,
+        0,
+        0,
+        radius * 0.5,
+        '#F59E0B',
+        0.22,
+        'shockwave_ring',
+        0,
+        0,
+        radius * 2.2
+      );
+
+      // Additional blazing critical sparks
+      for (let i = 0; i < 4; i++) {
+        this.obtainParticle(
+          contactX + (Math.random() - 0.5) * 14,
+          contactY + (Math.random() - 0.5) * 14,
+          (Math.random() - 0.5) * 120,
+          (Math.random() - 0.5) * 120 - 40,
+          250,
+          randomRange(2.5, 4.2),
+          i % 2 === 0 ? '#FBBF24' : '#EF4444',
+          randomRange(0.25, 0.40),
+          'sparkle',
+          Math.random() * Math.PI,
+          (Math.random() - 0.5) * 6
+        );
+      }
+    }
+
+    // 10. Fever Mode Energetic Ember Surge
+    if (isFever) {
+      for (let i = 0; i < 4; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = randomRange(100, 220);
+        this.obtainParticle(
+          contactX,
+          contactY,
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed - 20,
+          200,
+          randomRange(2.5, 4.5),
+          i % 2 === 0 ? '#FDE047' : '#F97316',
+          randomRange(0.28, 0.48),
+          'sparkle',
+          Math.random() * Math.PI,
+          (Math.random() - 0.5) * 5
+        );
+      }
+    }
   }
 
   /**
@@ -381,6 +455,299 @@ export class ParticleManager {
       0,
       0,
       'X'
+    );
+  }
+
+  /**
+   * Spawns radiant restorative sparkles, emerald ring, and floating text popup when a life is recovered.
+   */
+  spawnLifeRecoveredEffects(x, y, text = '+1 LIFE RECOVERED') {
+    // 1. Floating restorative text popup
+    this.obtainParticle(
+      x,
+      y,
+      0,
+      -95,
+      0,
+      22,
+      '#10B981',
+      0.85,
+      'text',
+      0,
+      0,
+      0,
+      text
+    );
+
+    // 2. Radiant restorative sparkles
+    const count = 12;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const speed = randomRange(60, 160);
+      this.obtainParticle(
+        x + (Math.random() - 0.5) * 16,
+        y + (Math.random() - 0.5) * 16,
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed - 30,
+        160,
+        randomRange(2.5, 4.5),
+        i % 2 === 0 ? '#10B981' : '#FBBF24',
+        randomRange(0.40, 0.70),
+        'sparkle',
+        Math.random() * Math.PI,
+        (Math.random() - 0.5) * 5
+      );
+    }
+
+    // 3. Expanding emerald halo ring
+    this.obtainParticle(
+      x,
+      y,
+      0,
+      0,
+      0,
+      12,
+      '#10B981',
+      0.35,
+      'shockwave_ring',
+      0,
+      0,
+      95
+    );
+  }
+
+  /**
+   * Spawns radiant golden starburst, expanding golden ring, sparkling glints,
+   * and subtle score animation for a clean Perfect Slice.
+   */
+  spawnPerfectSliceEffects(x, y) {
+    // 1. High-energy radiant golden diamond flash at impact center
+    this.obtainParticle(
+      x,
+      y,
+      0,
+      0,
+      0,
+      48,
+      '#FBBF24',
+      0.14,
+      'impact_spark',
+      0
+    );
+
+    // 2. Expanding golden combo ring
+    this.obtainParticle(
+      x,
+      y,
+      0,
+      0,
+      0,
+      18,
+      '#F59E0B',
+      0.38,
+      'combo_ring',
+      0,
+      0,
+      82
+    );
+
+    // 3. Floating "PERFECT! +10" popup text
+    this.obtainParticle(
+      x,
+      y - 24,
+      (Math.random() - 0.5) * 12,
+      -105,
+      0,
+      25,
+      '#FDE047',
+      0.75,
+      'text',
+      0,
+      0,
+      0,
+      'PERFECT! +10'
+    );
+
+    // 4. Radiant golden star glints
+    const glintCount = 8;
+    for (let i = 0; i < glintCount; i++) {
+      const angle = (i / glintCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      const speed = randomRange(90, 220);
+      this.obtainParticle(
+        x + (Math.random() - 0.5) * 8,
+        y + (Math.random() - 0.5) * 8,
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed,
+        220,
+        randomRange(3.0, 5.0),
+        i % 2 === 0 ? '#FEF08A' : '#FBBF24',
+        randomRange(0.35, 0.55),
+        'sparkle',
+        Math.random() * Math.PI,
+        (Math.random() - 0.5) * 6
+      );
+    }
+  }
+
+  /**
+   * Spawns clean multi-slice badge and chain feedback for slicing multiple fruits in one swipe.
+   * NO EMOJIS used.
+   */
+  spawnMultiSliceEffects(x, y, count = 2) {
+    let text = 'DOUBLE SLICE! +2';
+    let color = '#38BDF8';
+    let ringRadius = 80;
+
+    if (count === 3) {
+      text = 'TRIPLE SLICE! +5';
+      color = '#FBBF24';
+      ringRadius = 95;
+    } else if (count === 4) {
+      text = 'QUAD SLICE! +10';
+      color = '#F97316';
+      ringRadius = 110;
+    } else if (count >= 5) {
+      text = 'ULTRA SLICE! +20';
+      color = '#EC4899';
+      ringRadius = 130;
+    }
+
+    // 1. Clean multi-slice indicator popup
+    this.obtainParticle(
+      x,
+      y - 36,
+      (Math.random() - 0.5) * 14,
+      -110,
+      0,
+      28,
+      color,
+      0.82,
+      'text',
+      0,
+      0,
+      0,
+      text
+    );
+
+    // 2. Expanding shockwave ring
+    this.obtainParticle(
+      x,
+      y,
+      0,
+      0,
+      0,
+      24,
+      color,
+      0.40,
+      'shockwave_ring',
+      0,
+      0,
+      ringRadius
+    );
+
+    // 3. Dynamic burst sparkles around the multi-slice center
+    const burstCount = Math.min(16, 6 + count * 2);
+    for (let i = 0; i < burstCount; i++) {
+      const angle = (i / burstCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+      const speed = randomRange(80, 200);
+      this.obtainParticle(
+        x,
+        y,
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed,
+        180,
+        randomRange(2.5, 4.5),
+        color,
+        randomRange(0.30, 0.55),
+        'sparkle',
+        Math.random() * Math.PI,
+        (Math.random() - 0.5) * 4
+      );
+    }
+  }
+
+  /**
+   * Spawns an energetic radial explosion of sparkling motes, dual shockwave rings,
+   * and floating banner text when a power-up orb is cleaved open.
+   */
+  spawnPowerUpBurst(x, y, type) {
+    const config = POWER_UP_CONFIGS[type] || POWER_UP_CONFIGS[POWER_UP_TYPES.SLOW_MOTION];
+    const primary = config.primaryColor;
+    const secondary = config.secondaryColor;
+
+    // 1. Primary expanding shockwave ring
+    this.obtainParticle(
+      x,
+      y,
+      0,
+      0,
+      0,
+      14,
+      primary,
+      0.40,
+      'shockwave_ring',
+      0,
+      0,
+      135
+    );
+
+    // 2. Secondary core shockwave
+    this.obtainParticle(
+      x,
+      y,
+      0,
+      0,
+      0,
+      8,
+      '#FFFFFF',
+      0.24,
+      'shockwave_ring',
+      0,
+      0,
+      80
+    );
+
+    // 3. Radiant 360-degree sparkling power motes
+    const moteCount = 20;
+    for (let i = 0; i < moteCount; i++) {
+      const angle = (i / moteCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+      const speed = randomRange(140, 360);
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed - 40;
+      const size = randomRange(3.2, 5.5);
+      const color = i % 3 === 0 ? '#FFFFFF' : (i % 2 === 0 ? primary : secondary);
+      const life = randomRange(0.40, 0.70);
+
+      this.obtainParticle(
+        x + (Math.random() - 0.5) * 12,
+        y + (Math.random() - 0.5) * 12,
+        vx,
+        vy,
+        280,
+        size,
+        color,
+        life,
+        'sparkle',
+        Math.random() * Math.PI,
+        (Math.random() - 0.5) * 6
+      );
+    }
+
+    // 4. Floating power-up badge banner popup
+    this.obtainParticle(
+      x,
+      y - 20,
+      0,
+      -105,
+      0,
+      24,
+      primary,
+      0.90,
+      'text',
+      0,
+      0,
+      0,
+      config.badgeText || 'POWER UP!'
     );
   }
 

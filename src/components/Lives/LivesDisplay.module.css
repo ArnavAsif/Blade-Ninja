@@ -1,14 +1,23 @@
 .container {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 8px 16px;
-  background: rgba(15, 19, 26, 0.7);
-  border: 1px solid var(--border-subtle);
+  background: rgba(15, 19, 26, 0.78);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   border-radius: 12px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   user-select: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.labelGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .label {
@@ -16,22 +25,33 @@
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-muted, #94A3B8);
+  line-height: 1;
+}
+
+.countBadge {
+  font-size: 12px;
+  font-weight: 800;
+  font-family: var(--font-family-mono, monospace);
+  color: var(--text-primary, #F8FAFC);
+  line-height: 1;
+  letter-spacing: 0.05em;
 }
 
 .slotsContainer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .lifeSlot {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform var(--transition-fast), opacity var(--transition-fast);
+  position: relative;
+  transition: transform var(--transition-fast, 0.2s ease), opacity var(--transition-fast, 0.2s ease);
 }
 
 .lifeIcon {
@@ -40,33 +60,87 @@
   display: block;
 }
 
+/* Active Ruby Ninja Crest */
 .activeSlot {
-  filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.75));
+  filter: drop-shadow(0 0 10px rgba(244, 63, 94, 0.85)) drop-shadow(0 0 2px rgba(255, 255, 255, 0.4));
+  transform: scale(1);
 }
 
+.activeSlot:hover {
+  transform: scale(1.08);
+}
+
+/* Lost / Struck Out Slot */
 .lostSlot {
   opacity: 0.5;
+  filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.3));
 }
 
+/* Transition State: Lost Life */
 .justLost {
-  animation: lifeLostImpact 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  animation: lifeLostShatter 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Transition State: Recovered Life */
+.justRecovered {
+  animation: lifeRecoveredBloom 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes lifeLostShatter {
+  0% {
+    transform: scale(1.65) rotate(-10deg);
+    filter: drop-shadow(0 0 22px #EF4444) brightness(2.5);
+    opacity: 1;
+  }
+  30% {
+    transform: scale(0.82) rotate(6deg);
+    filter: drop-shadow(0 0 14px #EF4444) brightness(1.6);
+  }
+  60% {
+    transform: scale(1.12) rotate(-3deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.5;
+    filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.3));
+  }
+}
+
+@keyframes lifeRecoveredBloom {
+  0% {
+    transform: scale(0.6);
+    filter: drop-shadow(0 0 24px #10B981) brightness(2.6);
+    opacity: 0.7;
+  }
+  45% {
+    transform: scale(1.4);
+    filter: drop-shadow(0 0 32px #34D399) brightness(2.0);
+  }
+  75% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 10px rgba(244, 63, 94, 0.85)) drop-shadow(0 0 2px rgba(255, 255, 255, 0.4));
+    opacity: 1;
+  }
 }
 
 /* Timer Mode Styling */
 .timerContainer {
-  gap: 8px;
+  gap: 10px;
 }
 
 .timerIconBox {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent-cyan);
+  color: var(--accent-cyan, #38BDF8);
 }
 
 .clockIcon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 .timerContent {
@@ -77,8 +151,8 @@
 .timerValue {
   font-size: 20px;
   font-weight: 800;
-  font-family: var(--font-family-mono);
-  color: var(--text-primary);
+  font-family: var(--font-family-mono, monospace);
+  color: var(--text-primary, #F8FAFC);
   line-height: 1;
 }
 
@@ -89,12 +163,12 @@
 }
 
 .lowTime .timerValue {
-  color: var(--accent-crimson);
+  color: var(--accent-crimson, #F43F5E);
   text-shadow: 0 0 10px rgba(244, 63, 94, 0.8);
 }
 
 .lowTime .clockIcon {
-  color: var(--accent-crimson);
+  color: var(--accent-crimson, #F43F5E);
 }
 
 @keyframes timerWarningPulse {
@@ -106,29 +180,19 @@
   }
 }
 
-@keyframes lifeLostImpact {
-  0% {
-    transform: scale(1.6);
-    filter: drop-shadow(0 0 14px #EF4444) brightness(2);
-  }
-  40% {
-    transform: scale(0.85);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-}
-
 @media (max-width: 640px) {
   .container {
     padding: 6px 12px;
-    gap: 6px;
+    gap: 8px;
   }
 
   .lifeSlot {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
+  }
+
+  .countBadge {
+    font-size: 11px;
   }
 
   .timerValue {

@@ -64,6 +64,19 @@ const SOUND_ASSETS = Object.freeze({
   comboGeneric: '/sounds/Combo.wav',
   critical: '/sounds/Critical.wav',
 
+  // Multi-Slice & Blitz Fanfare
+  blitz1: '/sounds/combo-blitz-1.wav',
+  blitz2: '/sounds/combo-blitz-2.wav',
+  blitz3: '/sounds/combo-blitz-3.wav',
+  blitz4: '/sounds/combo-blitz-4.wav',
+  blitz5: '/sounds/combo-blitz-5.wav',
+  blitz6: '/sounds/combo-blitz-6.wav',
+
+  // Fever Mode Audio & Atmosphere
+  feverBacking: '/sounds/Combo-Blitz-Backing.wav',
+  feverBackingLight: '/sounds/Combo-Blitz-Backing-Light.wav',
+  feverEnd: '/sounds/Combo-Blitz-Backing-End.wav',
+
   // Bombs & Hazards
   bombExplode: '/sounds/Bomb-explode.wav',
   bombFuse: '/sounds/Bomb-Fuse.wav',
@@ -71,6 +84,10 @@ const SOUND_ASSETS = Object.freeze({
 
   // Fruit Launch
   throwFruit: '/sounds/Throw-fruit.wav',
+
+  // Life & Health
+  extraLife: '/sounds/extra-life.wav',
+  strikeMiss: '/sounds/gank.wav',
 
   // UI & Feedback
   uiButtonClick: '/sounds/ui-button-push.wav',
@@ -88,6 +105,16 @@ const SOUND_ASSETS = Object.freeze({
   timeTock: '/sounds/Time-tock.wav',
   timeBeep: '/sounds/time-beep.wav',
   timeUp: '/sounds/time-up.wav',
+
+  // Power-Ups
+  powerUpFreeze: '/sounds/Bonus-Banana-Freeze.wav',
+  powerUpFrenzy: '/sounds/Bonus-Banana-Frenzy.wav',
+  powerUpDouble: '/sounds/Bonus-Banana-X2.wav',
+  powerUpLife: '/sounds/extra-life.wav',
+  powerUpBlade: '/sounds/firecracker-blade-burn.wav',
+  powerUpBladeLightning: '/sounds/blade-lightning-1.wav',
+  powerUpPickup: '/sounds/powerup-starfruit.wav',
+  powerUpExpire: '/sounds/pome-rampdown.wav',
 });
 
 export class AudioManager {
@@ -125,6 +152,11 @@ export class AudioManager {
     this.bombFuseSource = null;
     this.bombFuseGain = null;
     this.isBombFusePlaying = false;
+
+    // Fever mode looping backing music state
+    this.feverSource = null;
+    this.feverGain = null;
+    this.isFeverPlaying = false;
 
     // Ambient music synthesizer state
     this.musicIntervalId = null;
@@ -259,6 +291,8 @@ export class AudioManager {
       'swordSwipe1', 'swordSwipe2', 'swordSwipe3', 'swordSwipe4',
       'combo1', 'combo2', 'combo3', 'combo4', 'combo5', 'combo6', 'combo7', 'combo8',
       'bombExplode', 'bombFuse', 'throwBomb', 'throwFruit',
+      'extraLife', 'strikeMiss',
+      'powerUpFreeze', 'powerUpFrenzy', 'powerUpDouble', 'powerUpLife', 'powerUpBlade', 'powerUpBladeLightning', 'powerUpPickup', 'powerUpExpire',
       'uiButtonClick', 'uiButtonHover', 'uiScreenWhoosh', 'gameStart', 'gameOver', 'newBestScore',
       'pause', 'unpause'
     ];
@@ -643,6 +677,143 @@ export class AudioManager {
     }
   }
 
+  /**
+   * Powerful multi-slice fanfare for slicing multiple fruits in a single swipe stroke.
+   * Plays escalating blitz audio (combo-blitz-1 to combo-blitz-6).
+   */
+  playMultiSlice(sliceCount = 2) {
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    const tier = Math.min(6, Math.max(1, sliceCount - 1));
+    const blitzKey = `blitz${tier}`;
+
+    const played = this.playSoundBuffer(blitzKey, {
+      volume: Math.min(1.25, 0.92 + tier * 0.05),
+      pitchJitter: 0.02,
+    });
+
+    // Layer with higher-tier combo chord for mega multi-slices (4+ fruits)
+    if (sliceCount >= 4) {
+      const extraKey = sliceCount >= 5 ? 'combo8' : 'combo7';
+      this.playSoundBuffer(extraKey, { volume: 0.88, delay: 0.03 });
+    }
+
+    if (!played) {
+      this.playCombo(Math.min(8, sliceCount + 1));
+    }
+  }
+
+  /**
+   * Crisp, rewarding audio cue when a fruit is sliced cleanly through its center.
+   */
+  playPerfectSlice() {
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    // 1. Play authentic critical impact sample
+    const played = this.playSoundBuffer('critical', {
+      volume: 1.15,
+      pitchJitter: 0.03,
+    });
+
+    // 2. Synthesize high-frequency crystalline resonance chime
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1480, now);
+      osc.frequency.exponentialRampToValueAtTime(2960, now + 0.16);
+
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGainNode);
+
+      osc.start(now);
+      osc.stop(now + 0.21);
+    } catch {}
+
+    if (!played) {
+      this.playSoundBuffer('cleanSlice1', { volume: 1.0 });
+    }
+  }
+
+  // --- FEVER MODE AUDIO ---
+
+  /**
+   * High-energy fanfare announcing entry into Fever Mode.
+   */
+  playFeverActivate() {
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    this.playSoundBuffer('blitz5', { volume: 1.2 });
+    this.playSoundBuffer('combo8', { volume: 1.05, delay: 0.04 });
+  }
+
+  /**
+   * Starts looping energetic Fever Mode backing music track with smooth fade-in.
+   */
+  startFeverMusic() {
+    if (!this.soundEnabled || !this.ctx || this.isFeverPlaying) return;
+    this.resume();
+
+    const buffer = this.buffers.get('feverBacking');
+    if (!buffer) return;
+
+    try {
+      this.feverSource = this.ctx.createBufferSource();
+      this.feverGain = this.ctx.createGain();
+
+      this.feverSource.buffer = buffer;
+      this.feverSource.loop = true;
+
+      const now = this.ctx.currentTime;
+      this.feverGain.gain.setValueAtTime(0.001, now);
+      this.feverGain.gain.linearRampToValueAtTime(0.80, now + 0.28);
+
+      this.feverSource.connect(this.feverGain);
+      this.feverGain.connect(this.musicGainNode || this.masterGainNode);
+
+      this.feverSource.start();
+      this.isFeverPlaying = true;
+    } catch {}
+  }
+
+  /**
+   * Smoothly fades out Fever backing track and plays resolving end fanfare.
+   */
+  stopFeverMusic() {
+    if (!this.isFeverPlaying) return;
+    this.isFeverPlaying = false;
+
+    if (this.feverGain && this.ctx) {
+      try {
+        const now = this.ctx.currentTime;
+        this.feverGain.gain.setValueAtTime(this.feverGain.gain.value, now);
+        this.feverGain.gain.linearRampToValueAtTime(0.001, now + 0.35);
+      } catch {}
+    }
+
+    if (this.feverSource) {
+      const src = this.feverSource;
+      setTimeout(() => {
+        try {
+          src.stop();
+          src.disconnect();
+        } catch {}
+      }, 380);
+      this.feverSource = null;
+    }
+
+    // Play smooth resolving wind-down audio
+    this.playSoundBuffer('feverEnd', { volume: 0.95 });
+  }
+
   // --- BOMB AUDIO ---
 
   /**
@@ -808,14 +979,230 @@ export class AudioManager {
     }
   }
 
-  // --- LIFE LOST / MISSED FRUIT AUDIO ---
+  // --- LIFE LOST & RECOVERY AUDIO ---
 
   playLifeLost() {
-    this.playSoundBuffer('visceral1', { volume: 0.8, playbackRate: 0.8 });
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    // Layer sharp buzzer strike transient with visceral flesh impact
+    const played = this.playSoundBuffer('strikeMiss', { volume: 0.95, pitchJitter: 0.04 });
+    this.playSoundBuffer('visceral1', { volume: 0.85, playbackRate: 0.82, delay: 0.005 });
+
+    if (!played) {
+      try {
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.14);
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        osc.connect(gain);
+        gain.connect(this.sfxGainNode);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      } catch {}
+    }
   }
 
   playFruitMissed() {
     this.playLifeLost();
+  }
+
+  playLifeRecovered() {
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    // Play authentic uplifting extra-life fanfare
+    const played = this.playSoundBuffer('extraLife', { volume: 1.05, pitchJitter: 0.02 });
+
+    if (!played) {
+      try {
+        const now = this.ctx.currentTime;
+        const chord = [523.25, 659.25, 783.99, 1046.50];
+        chord.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.04);
+          gain.gain.setValueAtTime(0.12, now + i * 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.04 + 0.35);
+          osc.connect(gain);
+          gain.connect(this.sfxGainNode);
+          osc.start(now + i * 0.04);
+          osc.stop(now + i * 0.04 + 0.36);
+        });
+      } catch {}
+    }
+  }
+
+  // --- POWER-UP AUDIO SUITE ---
+
+  /**
+   * High-impact pickup slice sound when a power-up orb is sliced open.
+   */
+  playPowerUpPickup(_type) {
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    // 1. Layer clean razor slice transient
+    this.playSoundBuffer('cleanSlice1', { volume: 0.95, pitchJitter: 0.05 });
+    // 2. Play sparkling starfruit pickup chime
+    const played = this.playSoundBuffer('powerUpPickup', { volume: 1.05, pitchJitter: 0.04 });
+
+    if (!played) {
+      try {
+        const now = this.ctx.currentTime;
+        const chime = [659.25, 880.0, 1174.66, 1760.0];
+        chime.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.035);
+          gain.gain.setValueAtTime(0.12, now + idx * 0.035);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.035 + 0.28);
+          osc.connect(gain);
+          gain.connect(this.sfxGainNode);
+          osc.start(now + idx * 0.035);
+          osc.stop(now + idx * 0.035 + 0.29);
+        });
+      } catch {}
+    }
+  }
+
+  /**
+   * Distinct activation fanfare tailored to the activated power-up type.
+   */
+  playPowerUpActivate(type) {
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    let key = 'powerUpFreeze';
+    switch (type) {
+      case 'slow_motion':
+        key = 'powerUpFreeze';
+        break;
+      case 'frenzy':
+        key = 'powerUpFrenzy';
+        break;
+      case 'double_score':
+        key = 'powerUpDouble';
+        break;
+      case 'life_restore':
+        key = 'powerUpLife';
+        break;
+      case 'blade_boost':
+        key = 'powerUpBlade';
+        this.playSoundBuffer('powerUpBladeLightning', { volume: 0.85, delay: 0.04 });
+        break;
+      default:
+        key = 'powerUpFreeze';
+        break;
+    }
+
+    const played = this.playSoundBuffer(key, { volume: 1.15, pitchJitter: 0.02 });
+
+    if (!played) {
+      // Synthesized fallbacks
+      try {
+        const now = this.ctx.currentTime;
+        if (type === 'slow_motion') {
+          // Low resonant freeze drone + high crystalline sweep
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, now);
+          osc.frequency.exponentialRampToValueAtTime(220, now + 0.45);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+          osc.connect(gain);
+          gain.connect(this.sfxGainNode);
+          osc.start(now);
+          osc.stop(now + 0.46);
+        } else if (type === 'frenzy') {
+          // Rapid upbeat fanfare arpeggio
+          const notes = [440, 554.37, 659.25, 880, 1108.73];
+          notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+            gain.gain.setValueAtTime(0.12, now + idx * 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.22);
+            osc.connect(gain);
+            gain.connect(this.sfxGainNode);
+            osc.start(now + idx * 0.04);
+            osc.stop(now + idx * 0.04 + 0.23);
+          });
+        } else if (type === 'double_score') {
+          // Bell chime duo
+          const chime = [523.25, 1046.50];
+          chime.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+            gain.gain.setValueAtTime(0.16, now + idx * 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.35);
+            osc.connect(gain);
+            gain.connect(this.sfxGainNode);
+            osc.start(now + idx * 0.05);
+            osc.stop(now + idx * 0.05 + 0.36);
+          });
+        } else if (type === 'blade_boost') {
+          // Roaring fire surge sweep
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(720, now + 0.32);
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.connect(gain);
+          gain.connect(this.sfxGainNode);
+          osc.start(now);
+          osc.stop(now + 0.36);
+        }
+      } catch {}
+    }
+  }
+
+  /**
+   * Smooth wind-down audio cue when a power-up timer elapses.
+   */
+  playPowerUpExpire(_type) {
+    if (!this.soundEnabled || !this.ctx) return;
+    this.resume();
+
+    const played = this.playSoundBuffer('powerUpExpire', { volume: 0.85, pitchJitter: 0.02 });
+
+    if (!played) {
+      try {
+        const now = this.ctx.currentTime;
+        const desc = [783.99, 659.25, 523.25];
+        desc.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+          gain.gain.setValueAtTime(0.09, now + idx * 0.06);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.2);
+          osc.connect(gain);
+          gain.connect(this.sfxGainNode);
+          osc.start(now + idx * 0.06);
+          osc.stop(now + idx * 0.06 + 0.21);
+        });
+      } catch {}
+    }
+  }
+
+  /**
+   * Crisply plays critical slice sound when slicing with Blade Boost active.
+   */
+  playCriticalSlice() {
+    this.playSoundBuffer('critical', { volume: 0.95, pitchJitter: 0.05 });
   }
 
   // --- UI SOUNDS ---

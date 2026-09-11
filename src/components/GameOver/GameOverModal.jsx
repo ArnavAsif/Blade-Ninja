@@ -7,6 +7,7 @@ export function GameOverModal({
   bestScore = 0,
   maxCombo = 0,
   fruitsSliced = 0,
+  livesRecovered = 0,
   modeName = 'Classic',
   audioManager = null,
   onRestart,
@@ -123,6 +124,12 @@ export function GameOverModal({
             <span className={styles.statLabel}>Fruits Sliced</span>
             <span className={styles.statValue}>{fruitsSliced}</span>
           </div>
+          {modeName !== 'Zen' && livesRecovered > 0 && (
+            <div className={styles.statItem}>
+              <span className={styles.statLabel}>Lives Recovered</span>
+              <span className={styles.statValue}>{livesRecovered}</span>
+            </div>
+          )}
         </div>
 
         <div ref={actionsRef} className={styles.actions}>

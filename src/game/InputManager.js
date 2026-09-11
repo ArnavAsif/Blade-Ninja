@@ -40,6 +40,7 @@ export class InputManager {
     this.trailDurationMs = 190; // Lifetime of trail points in ms
     this.minDistanceThresholdSq = 2.5 * 2.5; // Fine sub-pixel movement threshold
     this.minSliceSpeed = 120; // Minimum px/s to register an active slice cut
+    this.currentSwipeId = 1;
 
     this.pointPool = [];
     for (let i = 0; i < this.maxTrailPoints + 15; i++) {
@@ -49,8 +50,8 @@ export class InputManager {
     this.activePoints = [];
 
     // Pre-allocated segment objects to eliminate GC in cutting detection
-    this.reusableCutSegment = { p1: null, p2: null, speed: 0 };
-    this.segmentPool = Array.from({ length: 12 }, () => ({ p1: null, p2: null, speed: 0 }));
+    this.reusableCutSegment = { p1: null, p2: null, speed: 0, swipeId: 1 };
+    this.segmentPool = Array.from({ length: 12 }, () => ({ p1: null, p2: null, speed: 0, swipeId: 1 }));
     this.activeSegments = [];
 
     // Bound event listeners
@@ -145,18 +146,23 @@ export class InputManager {
 
   handlePointerDown(e) {
     // Only track single primary pointer at a time
-    if (this.isDown && this.pointerId !== null && this.pointerId !== e.pointerId) {
+    if (this.isDown && this.pointerId !== null) {
       return;
     }
 
-    e.preventDefault();
+    if (e.cancelable) {
+      e.preventDefault();
+    }
 
     this.isDown = true;
     this.pointerId = e.pointerId;
     this.smoothedSpeed = 0;
+    this.currentSwipeId++;
 
     try {
-      this.canvas.setPointerCapture(e.pointerId);
+      if (this.canvas && typeof this.canvas.setPointerCapture === 'function') {
+        this.canvas.setPointerCapture(e.pointerId);
+      }
     } catch {
       // Ignore if setPointerCapture is unsupported
     }
@@ -182,7 +188,9 @@ export class InputManager {
       return;
     }
 
-    e.preventDefault();
+    if (e.cancelable) {
+      e.preventDefault();
+    }
 
     // Process coalesced events for high-precision sensor capture if supported
     const rawEvents = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
@@ -248,7 +256,7 @@ export class InputManager {
     if (this.pointerId !== null && this.pointerId !== e.pointerId) return;
 
     try {
-      if (this.canvas && this.canvas.hasPointerCapture(e.pointerId)) {
+      if (this.canvas && typeof this.canvas.hasPointerCapture === 'function' && this.canvas.hasPointerCapture(e.pointerId)) {
         this.canvas.releasePointerCapture(e.pointerId);
       }
     } catch {
@@ -346,6 +354,7 @@ export class InputManager {
       this.reusableCutSegment.p1 = p1;
       this.reusableCutSegment.p2 = p2;
       this.reusableCutSegment.speed = speed;
+      this.reusableCutSegment.swipeId = this.currentSwipeId;
       return this.reusableCutSegment;
     }
 
@@ -378,17 +387,22 @@ export class InputManager {
 
       if (speed >= this.minSliceSpeed) {
         if (segIdx >= this.segmentPool.length) {
-          this.segmentPool.push({ p1: null, p2: null, speed: 0 });
+          this.segmentPool.push({ p1: null, p2: null, speed: 0, swipeId: this.currentSwipeId });
         }
         const seg = this.segmentPool[segIdx++];
         seg.p1 = p1;
         seg.p2 = p2;
         seg.speed = speed;
+        seg.swipeId = this.currentSwipeId;
         this.activeSegments.push(seg);
       }
     }
 
     return this.activeSegments;
+  }
+
+  getCurrentSwipeId() {
+    return this.currentSwipeId;
   }
 
   reset() {

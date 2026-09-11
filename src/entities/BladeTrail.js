@@ -33,7 +33,7 @@ export class BladeTrail {
     this.sampleCount = 0;
 
     // Micro spark particle pool for high-velocity slashes
-    this.maxSparks = 20;
+    this.maxSparks = 40;
     this.sparks = Array.from({ length: this.maxSparks }, () => ({
       x: 0,
       y: 0,
@@ -43,7 +43,20 @@ export class BladeTrail {
       maxLife: 0.12,
       size: 1.5,
       active: false,
+      color: '#FFFFFF',
     }));
+
+    // Power-up & Fever state
+    this.isBladeBoostActive = false;
+    this.isFeverActive = false;
+  }
+
+  setBladeBoost(active) {
+    this.isBladeBoostActive = Boolean(active);
+  }
+
+  setFever(active) {
+    this.isFeverActive = Boolean(active);
   }
 
   update(now = performance.now()) {
@@ -66,16 +79,21 @@ export class BladeTrail {
       spark.y += spark.vy * dt;
     }
 
-    // 2. Emit subtle blade gleam sparks during high-velocity swipes
+    // 2. Emit blade gleam sparks during swipes (increased intensity with Blade Boost or Fever)
     if (this.inputManager.isDown) {
       const speed = this.inputManager.getSwipeSpeed();
-      if (speed > 550) {
+      const isEnhanced = this.isBladeBoostActive || this.isFeverActive;
+      const threshold = isEnhanced ? 300 : 550;
+      if (speed > threshold) {
         const pts = this.inputManager.getTrailPoints();
         if (pts.length >= 2) {
           const tip = pts[pts.length - 1];
           const prev = pts[pts.length - 2];
           const angle = Math.atan2(tip.y - prev.y, tip.x - prev.x);
-          this.spawnSpark(tip.x, tip.y, angle);
+          const count = (this.isBladeBoostActive && this.isFeverActive) ? 4 : (isEnhanced ? 3 : 1);
+          for (let c = 0; c < count; c++) {
+            this.spawnSpark(tip.x, tip.y, angle);
+          }
         }
       }
     }
@@ -86,16 +104,22 @@ export class BladeTrail {
       const spark = this.sparks[i];
       if (spark.active) continue;
 
-      const angle = swipeAngle + Math.PI + (Math.random() - 0.5) * 1.1;
-      const sparkSpeed = Math.random() * 85 + 35;
+      const isEnhanced = this.isBladeBoostActive || this.isFeverActive;
+      const angle = swipeAngle + Math.PI + (Math.random() - 0.5) * (isEnhanced ? 1.8 : 1.1);
+      const sparkSpeed = (Math.random() * 95 + 40) * (isEnhanced ? 1.45 : 1.0);
 
-      spark.x = x + (Math.random() - 0.5) * 4;
-      spark.y = y + (Math.random() - 0.5) * 4;
+      spark.x = x + (Math.random() - 0.5) * 6;
+      spark.y = y + (Math.random() - 0.5) * 6;
       spark.vx = Math.cos(angle) * sparkSpeed;
       spark.vy = Math.sin(angle) * sparkSpeed;
       spark.life = 0;
-      spark.maxLife = 0.08 + Math.random() * 0.06;
-      spark.size = 1.2 + Math.random() * 1.4;
+      spark.maxLife = 0.08 + Math.random() * 0.08;
+      spark.size = (1.4 + Math.random() * 1.8) * (isEnhanced ? 1.5 : 1.0);
+      spark.color = this.isFeverActive
+        ? (Math.random() < 0.6 ? '#FDE047' : '#EF4444')
+        : (this.isBladeBoostActive
+            ? (Math.random() < 0.5 ? '#FBBF24' : '#EF4444')
+            : '#FFFFFF');
       spark.active = true;
       break;
     }
@@ -241,8 +265,9 @@ export class BladeTrail {
     const total = this.sampleCount;
     if (total < 2) return;
 
-    // Peak ribbon half-width: sleek 2.4px on slow swipes up to 5.2px on fast swipes
-    const maxHalfWidth = 2.4 + 2.8 * speedFactor;
+    // Peak ribbon half-width: sleek 2.4px on slow swipes up to 5.2px on fast swipes (expanded during Blade Boost)
+    const widthMult = this.isBladeBoostActive ? 1.75 : 1.0;
+    const maxHalfWidth = (2.4 + 2.8 * speedFactor) * widthMult;
 
     for (let k = 0; k < total; k++) {
       let dx;
@@ -296,7 +321,7 @@ export class BladeTrail {
   }
 
   /**
-   * Layer 1: Soft Outer Cyan Aura.
+   * Layer 1: Soft Outer Cyan Aura (or Blazing Crimson with Blade Boost).
    */
   renderAura(ctx, speedFactor) {
     const total = this.sampleCount;
@@ -306,16 +331,28 @@ export class BladeTrail {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const auraWidth = 7.0 + 8.0 * speedFactor;
-    const auraAlpha = 0.18 + 0.22 * speedFactor;
+    const isEnhanced = this.isBladeBoostActive || this.isFeverActive;
+    const widthMult = this.isBladeBoostActive ? 1.75 : (this.isFeverActive ? 1.55 : 1.0);
+    const auraWidth = (7.0 + 8.0 * speedFactor) * widthMult;
+    const auraAlpha = Math.min(1.0, (0.18 + 0.22 * speedFactor) * (isEnhanced ? 1.45 : 1.0));
 
-    if (speedFactor > 0.35) {
-      ctx.shadowColor = 'rgba(56, 189, 248, 0.65)';
-      ctx.shadowBlur = 8 * speedFactor;
+    if (this.isFeverActive) {
+      ctx.shadowColor = 'rgba(251, 191, 36, 0.9)';
+      ctx.shadowBlur = 14 * speedFactor;
+      ctx.strokeStyle = `rgba(245, 158, 11, ${auraAlpha})`;
+    } else if (this.isBladeBoostActive) {
+      ctx.shadowColor = 'rgba(239, 68, 68, 0.85)';
+      ctx.shadowBlur = 12 * speedFactor;
+      ctx.strokeStyle = `rgba(249, 115, 22, ${auraAlpha})`;
+    } else {
+      if (speedFactor > 0.35) {
+        ctx.shadowColor = 'rgba(56, 189, 248, 0.65)';
+        ctx.shadowBlur = 8 * speedFactor;
+      }
+      ctx.strokeStyle = `rgba(14, 165, 233, ${auraAlpha})`;
     }
 
     ctx.lineWidth = auraWidth;
-    ctx.strokeStyle = `rgba(14, 165, 233, ${auraAlpha})`;
 
     ctx.beginPath();
     ctx.moveTo(this.samplesX[0], this.samplesY[0]);
@@ -371,8 +408,16 @@ export class BladeTrail {
     ctx.lineTo(this.samplesX[0], this.samplesY[0]);
     ctx.closePath();
 
-    const fillAlpha = 0.55 + 0.38 * speedFactor;
-    ctx.fillStyle = `rgba(56, 189, 248, ${fillAlpha})`;
+    if (this.isFeverActive) {
+      const fillAlpha = Math.min(1.0, 0.72 + 0.28 * speedFactor);
+      ctx.fillStyle = `rgba(245, 158, 11, ${fillAlpha})`;
+    } else if (this.isBladeBoostActive) {
+      const fillAlpha = Math.min(1.0, 0.65 + 0.35 * speedFactor);
+      ctx.fillStyle = `rgba(249, 115, 22, ${fillAlpha})`;
+    } else {
+      const fillAlpha = 0.55 + 0.38 * speedFactor;
+      ctx.fillStyle = `rgba(56, 189, 248, ${fillAlpha})`;
+    }
     ctx.fill();
 
     ctx.restore();
@@ -389,11 +434,16 @@ export class BladeTrail {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const coreWidth = 1.2 + 1.4 * speedFactor;
+    const isEnhanced = this.isBladeBoostActive || this.isFeverActive;
+    const coreWidth = (1.2 + 1.4 * speedFactor) * (isEnhanced ? 1.5 : 1.0);
     const coreAlpha = 0.88 + 0.12 * speedFactor;
 
     ctx.lineWidth = coreWidth;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${coreAlpha})`;
+    ctx.strokeStyle = this.isFeverActive
+      ? `rgba(254, 249, 195, ${coreAlpha})`
+      : (this.isBladeBoostActive
+          ? `rgba(254, 240, 138, ${coreAlpha})`
+          : `rgba(255, 255, 255, ${coreAlpha})`);
 
     ctx.beginPath();
     ctx.moveTo(this.samplesX[0], this.samplesY[0]);
@@ -416,12 +466,18 @@ export class BladeTrail {
     ctx.save();
     ctx.translate(x, y);
 
-    const baseRadius = 3.5 + 2.5 * speedFactor;
+    const isEnhanced = this.isBladeBoostActive || this.isFeverActive;
+    const baseRadius = (3.5 + 2.5 * speedFactor) * (isEnhanced ? 1.25 : 1.0);
 
     // 1. Soft glowing outer flare
     ctx.beginPath();
     ctx.arc(0, 0, baseRadius * 1.8, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(56, 189, 248, ${0.35 + 0.35 * speedFactor})`;
+    const tipColor = this.isFeverActive
+      ? `rgba(251, 191, 36, ${0.45 + 0.35 * speedFactor})`
+      : (this.isBladeBoostActive
+          ? `rgba(249, 115, 22, ${0.40 + 0.35 * speedFactor})`
+          : `rgba(56, 189, 248, ${0.35 + 0.35 * speedFactor})`);
+    ctx.fillStyle = tipColor;
     ctx.fill();
 
     // 2. Razor white hot cutting core bead
@@ -472,11 +528,13 @@ export class BladeTrail {
       const progress = spark.life / spark.maxLife;
       const alpha = Math.max(0, 1.0 - progress);
 
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.88})`;
+      ctx.fillStyle = spark.color || '#FFFFFF';
+      ctx.globalAlpha = alpha * 0.88;
       ctx.beginPath();
       const sparkR = Math.max(0.1, spark.size * alpha);
       ctx.arc(spark.x, spark.y, sparkR, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = 1.0;
   }
 }

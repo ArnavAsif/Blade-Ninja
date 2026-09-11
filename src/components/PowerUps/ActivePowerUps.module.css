@@ -1,0 +1,148 @@
+.powerUpsContainer {
+  position: absolute;
+  top: 86px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  z-index: 15;
+  transition: all 0.25s ease;
+}
+
+.powerUpBadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 6px 8px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid var(--pu-primary, #38bdf8);
+  border-radius: 9999px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 14px var(--pu-glow, rgba(56, 189, 248, 0.35));
+  animation: badgeSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+  user-select: none;
+}
+
+@keyframes badgeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.expiring {
+  animation: expiringPulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes expiringPulse {
+  0% {
+    opacity: 1;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 14px var(--pu-glow, rgba(56, 189, 248, 0.35));
+  }
+  100% {
+    opacity: 0.72;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 24px var(--pu-glow, rgba(56, 189, 248, 0.75));
+  }
+}
+
+.timerRingWrapper {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.progressRing {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotate(-90deg);
+  width: 36px;
+  height: 36px;
+}
+
+.progressTrack {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 3;
+}
+
+.progressFill {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.1s linear;
+}
+
+.iconWrapper {
+  position: relative;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconSvg {
+  width: 18px;
+  height: 18px;
+  filter: drop-shadow(0 0 4px var(--pu-glow, rgba(255, 255, 255, 0.5)));
+}
+
+.infoWrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+.badgeTitle {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #F8FAFC;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--pu-glow, rgba(255, 255, 255, 0.4));
+  white-space: nowrap;
+}
+
+.badgeTimer {
+  font-family: monospace, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pu-primary, #38bdf8);
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 640px) {
+  .powerUpsContainer {
+    top: 74px;
+    gap: 8px;
+  }
+
+  .powerUpBadge {
+    padding: 4px 10px 4px 6px;
+  }
+
+  .badgeTitle {
+    font-size: 10px;
+  }
+
+  .badgeTimer {
+    font-size: 11px;
+  }
+}
