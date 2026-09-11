@@ -1235,6 +1235,37 @@ export class AudioManager {
     this.playSoundBuffer('newBestScore', { volume: 1.0 });
   }
 
+  /**
+   * Sparkling ascending crystalline chime for achievement unlocks.
+   * Plays a crisp, short, rewarding fanfare without interrupting game audio flow.
+   */
+  playAchievementUnlock() {
+    if (!this.soundEnabled) return;
+    this.resume();
+
+    const played = this.playSoundBuffer('newBestScore', { volume: 0.9, pitchJitter: 0.02 });
+    if (!played) {
+      try {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        // Ascending crystalline chord: C6 -> E6 -> G6 -> C7
+        const notes = [1046.5, 1318.5, 1567.98, 2093.0];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+          gain.gain.setValueAtTime(0.14, now + idx * 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.35);
+          osc.connect(gain);
+          gain.connect(this.sfxGainNode);
+          osc.start(now + idx * 0.05);
+          osc.stop(now + idx * 0.05 + 0.36);
+        });
+      } catch {}
+    }
+  }
+
   playPause() {
     this.stopBombFuse();
     this.playSoundBuffer('pause', { volume: 0.85 });

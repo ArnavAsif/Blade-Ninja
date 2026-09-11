@@ -203,6 +203,9 @@ export class FruitManager {
       const bomb = activeBombs[i];
       bomb.update(physicsDt, screenWidth, screenHeight);
       if (!bomb.active) {
+        if (!bomb.exploded && this.gameState && typeof this.gameState.getProgressionManager === 'function') {
+          this.gameState.getProgressionManager()?.recordBombAvoided();
+        }
         this.bombPool.release(bomb);
       }
     }

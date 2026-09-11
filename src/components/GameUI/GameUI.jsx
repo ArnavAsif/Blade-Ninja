@@ -8,6 +8,7 @@ import { LivesDisplay } from '../Lives/LivesDisplay.jsx';
 import { GameOverModal } from '../GameOver/GameOverModal.jsx';
 import { SettingsModal } from '../Settings/SettingsModal.jsx';
 import { ActivePowerUps } from '../PowerUps/ActivePowerUps.jsx';
+import { AchievementToast } from '../Achievement/AchievementToast.jsx';
 import styles from './GameUI.module.css';
 
 export function GameUI({ gameState, engine }) {
@@ -358,6 +359,12 @@ export function GameUI({ gameState, engine }) {
           onMenu={handleMainMenu}
         />
       )}
+
+      {/* Achievement Unlocks Toast Notification */}
+      <AchievementToast
+        progressionManager={gameState ? gameState.getProgressionManager() : null}
+        audioManager={engine ? engine.audioManager : null}
+      />
     </div>
   );
 }

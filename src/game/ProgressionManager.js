@@ -114,40 +114,113 @@ export const DEFAULT_MISSIONS = [
 
 export const ACHIEVEMENTS = [
   {
-    id: 'first_blood',
-    title: 'First Cut',
+    id: 'first_slice',
+    title: 'First Slice',
     description: 'Slice your first fruit in the dojo',
     reward: 20,
+    iconType: 'first_slice',
+    aliases: ['first_blood'],
   },
   {
-    id: 'century_club',
-    title: 'Century Slicer',
+    id: 'first_combo',
+    title: 'First Combo',
+    description: 'Perform your first consecutive combo streak',
+    reward: 25,
+    iconType: 'first_combo',
+  },
+  {
+    id: 'combo_10',
+    title: '10 Combo',
+    description: 'Achieve a 10x combo streak',
+    reward: 40,
+    iconType: 'combo_10',
+  },
+  {
+    id: 'combo_25',
+    title: '25 Combo',
+    description: 'Achieve a blazing 25x combo streak',
+    reward: 75,
+    iconType: 'combo_25',
+  },
+  {
+    id: 'combo_50',
+    title: '50 Combo',
+    description: 'Unleash an unstoppable 50x combo rampage',
+    reward: 150,
+    iconType: 'combo_50',
+  },
+  {
+    id: 'fruits_100',
+    title: '100 Fruits',
     description: 'Slice 100 total fruits across your career',
     reward: 50,
+    iconType: 'fruits_100',
+    aliases: ['century_club'],
   },
   {
-    id: 'fever_initiate',
-    title: 'Blazing Aura',
-    description: 'Enter Fever mode for the first time',
+    id: 'fruits_1000',
+    title: '1,000 Fruits',
+    description: 'Slice 1,000 total fruits across your career',
+    reward: 200,
+    iconType: 'fruits_1000',
+  },
+  {
+    id: 'first_fever',
+    title: 'First Fever',
+    description: 'Ignite Fever mode for the first time',
     reward: 35,
+    iconType: 'first_fever',
+    aliases: ['fever_initiate'],
+  },
+  {
+    id: 'perfect_slice',
+    title: 'Perfect Slice',
+    description: 'Perform a clean center-cut Perfect Slice',
+    reward: 30,
+    iconType: 'perfect_slice',
   },
   {
     id: 'perfect_slasher',
     title: 'Zen Precision',
     description: 'Perform 10 Perfect Center cuts',
     reward: 60,
+    iconType: 'perfect_slice',
   },
   {
-    id: 'grandmaster',
-    title: 'Dojo Legend',
-    description: 'Score 1,000 or more in any session',
-    reward: 100,
+    id: 'multi_slice',
+    title: 'Multi Slice',
+    description: 'Slice 3 or more fruits in a single swipe',
+    reward: 35,
+    iconType: 'multi_slice',
+  },
+  {
+    id: 'high_score',
+    title: 'High Score',
+    description: 'Score 1,000 points or more in a session',
+    reward: 60,
+    iconType: 'high_score',
+    aliases: ['grandmaster'],
+  },
+  {
+    id: 'long_survival',
+    title: 'Long Survival',
+    description: 'Survive for at least 90 seconds in a single session',
+    reward: 50,
+    iconType: 'long_survival',
+  },
+  {
+    id: 'bomb_avoider',
+    title: 'Bomb Avoider',
+    description: 'Let 10 active bombs safely pass without striking any',
+    reward: 45,
+    iconType: 'bomb_avoider',
   },
 ];
 
 export class ProgressionManager {
   constructor() {
     this.subscribers = new Set();
+    this.achievementListeners = new Set();
     this.sessionSurviveTime = 0;
     this.sessionHighestScore = 0;
 
@@ -167,6 +240,7 @@ export class ProgressionManager {
         totalPlayTime: 0,
         missionsCompleted: 0,
         perfectSlicesCount: 0,
+        bombsAvoidedCount: 0,
         specialAchievements: [],
       },
       missions: DEFAULT_MISSIONS.map((m) => ({ ...m })),
@@ -230,6 +304,7 @@ export class ProgressionManager {
       totalPlayTime: Number.isFinite(rawProfile.totalPlayTime) ? Math.max(0, rawProfile.totalPlayTime) : 0,
       missionsCompleted: Number.isFinite(rawProfile.missionsCompleted) ? Math.max(0, Math.floor(rawProfile.missionsCompleted)) : 0,
       perfectSlicesCount: Number.isFinite(rawProfile.perfectSlicesCount) ? Math.max(0, Math.floor(rawProfile.perfectSlicesCount)) : 0,
+      bombsAvoidedCount: Number.isFinite(rawProfile.bombsAvoidedCount) ? Math.max(0, Math.floor(rawProfile.bombsAvoidedCount)) : 0,
       specialAchievements: Array.isArray(rawProfile.specialAchievements)
         ? rawProfile.specialAchievements.filter((id) => typeof id === 'string')
         : [],
@@ -309,6 +384,11 @@ export class ProgressionManager {
     if (this.sessionSurviveTime >= 60) {
       this.updateMissionProgress('survive_duration', 60, true);
     }
+
+    // Check 90s Long Survival achievement
+    if (this.sessionSurviveTime >= 90) {
+      this.unlockAchievement('long_survival');
+    }
   }
 
   recordSlice(fruitType, metadata = {}) {
@@ -325,6 +405,7 @@ export class ProgressionManager {
     // 3. Multi-slice swipe (3+ fruits in one swipe)
     if (metadata.multiSliceCount && metadata.multiSliceCount >= 3) {
       this.updateMissionProgress('multi_slice_swipe', metadata.multiSliceCount, true);
+      this.unlockAchievement('multi_slice');
     }
 
     // 4. Special fruits & power-ups
@@ -339,15 +420,19 @@ export class ProgressionManager {
     // 5. Perfect slice tracking for achievements
     if (metadata.isPerfectSlice) {
       this.data.profile.perfectSlicesCount += 1;
+      this.unlockAchievement('perfect_slice');
       if (this.data.profile.perfectSlicesCount >= 10) {
         this.unlockAchievement('perfect_slasher');
       }
     }
 
     // Check fruit count achievements
-    this.unlockAchievement('first_blood');
+    this.unlockAchievement('first_slice');
     if (this.data.profile.totalFruitsSliced >= 100) {
-      this.unlockAchievement('century_club');
+      this.unlockAchievement('fruits_100');
+    }
+    if (this.data.profile.totalFruitsSliced >= 1000) {
+      this.unlockAchievement('fruits_1000');
     }
 
     this.save();
@@ -359,8 +444,20 @@ export class ProgressionManager {
       this.data.profile.highestCombo = combo;
     }
 
+    if (combo >= 2) {
+      this.unlockAchievement('first_combo');
+    }
+    if (combo >= 10) {
+      this.unlockAchievement('combo_10');
+    }
     if (combo >= 20) {
       this.updateMissionProgress('combo_20', combo, true);
+    }
+    if (combo >= 25) {
+      this.unlockAchievement('combo_25');
+    }
+    if (combo >= 50) {
+      this.unlockAchievement('combo_50');
     }
 
     this.save();
@@ -377,7 +474,7 @@ export class ProgressionManager {
     }
 
     if (score >= 1000) {
-      this.unlockAchievement('grandmaster');
+      this.unlockAchievement('high_score');
     }
 
     this.save();
@@ -386,7 +483,16 @@ export class ProgressionManager {
 
   recordFever() {
     this.updateMissionProgress('enter_fever_mode', 1);
-    this.unlockAchievement('fever_initiate');
+    this.unlockAchievement('first_fever');
+    this.save();
+    this.notifySubscribers();
+  }
+
+  recordBombAvoided() {
+    this.data.profile.bombsAvoidedCount = (this.data.profile.bombsAvoidedCount || 0) + 1;
+    if (this.data.profile.bombsAvoidedCount >= 10) {
+      this.unlockAchievement('bomb_avoider');
+    }
     this.save();
     this.notifySubscribers();
   }
@@ -415,15 +521,45 @@ export class ProgressionManager {
     }
   }
 
-  unlockAchievement(achievementId) {
-    const ach = ACHIEVEMENTS.find((a) => a.id === achievementId);
-    if (!ach) return;
+  unlockAchievement(rawId) {
+    const ach = ACHIEVEMENTS.find((a) => a.id === rawId || (a.aliases && a.aliases.includes(rawId)));
+    if (!ach) return null;
 
-    if (!this.data.profile.specialAchievements.includes(achievementId)) {
-      this.data.profile.specialAchievements.push(achievementId);
+    const canonicalId = ach.id;
+    const alreadyUnlocked = this.data.profile.specialAchievements.some(
+      (savedId) => savedId === canonicalId || (ach.aliases && ach.aliases.includes(savedId))
+    );
+
+    if (!alreadyUnlocked) {
+      this.data.profile.specialAchievements.push(canonicalId);
+      if (ach.aliases) {
+        for (const alias of ach.aliases) {
+          if (!this.data.profile.specialAchievements.includes(alias)) {
+            this.data.profile.specialAchievements.push(alias);
+          }
+        }
+      }
       this.data.currency += ach.reward;
       this.save();
       this.notifySubscribers();
+      this.notifyAchievementUnlocked(ach);
+      return ach;
+    }
+    return null;
+  }
+
+  subscribeAchievementUnlock(listener) {
+    this.achievementListeners.add(listener);
+    return () => this.achievementListeners.delete(listener);
+  }
+
+  notifyAchievementUnlocked(achievement) {
+    for (const listener of this.achievementListeners) {
+      try {
+        listener(achievement);
+      } catch (err) {
+        console.error('Error in achievement unlock listener:', err);
+      }
     }
   }
 
@@ -486,11 +622,16 @@ export class ProgressionManager {
   }
 
   getAchievements() {
-    const unlocked = new Set(this.data.profile.specialAchievements);
-    return ACHIEVEMENTS.map((a) => ({
-      ...a,
-      isUnlocked: unlocked.has(a.id),
-    }));
+    const unlockedSet = new Set(this.data.profile.specialAchievements);
+    return ACHIEVEMENTS.map((a) => {
+      const isUnlocked =
+        unlockedSet.has(a.id) ||
+        Boolean(a.aliases && a.aliases.some((alias) => unlockedSet.has(alias)));
+      return {
+        ...a,
+        isUnlocked,
+      };
+    });
   }
 
   subscribe(listener) {
@@ -528,5 +669,6 @@ export class ProgressionManager {
 
   destroy() {
     this.subscribers.clear();
+    this.achievementListeners.clear();
   }
 }
