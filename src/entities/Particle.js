@@ -156,6 +156,31 @@ export class Particle {
       ctx.stroke();
 
       ctx.restore();
+    } else if (this.type === 'impact_spark') {
+      ctx.save();
+      ctx.globalAlpha = this.alpha;
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.rotation);
+
+      const starSize = this.size * this.alpha;
+
+      // 1. High-energy radiant diamond flash
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.moveTo(0, -starSize);
+      ctx.quadraticCurveTo(0, 0, starSize * 0.35, 0);
+      ctx.quadraticCurveTo(0, 0, 0, starSize);
+      ctx.quadraticCurveTo(0, 0, -starSize * 0.35, 0);
+      ctx.quadraticCurveTo(0, 0, 0, -starSize);
+      ctx.fill();
+
+      // 2. Pure white hot impact core
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(0, 0, starSize * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
     } else if (this.type === 'text') {
       ctx.save();
       ctx.globalAlpha = this.alpha;

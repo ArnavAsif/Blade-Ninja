@@ -450,9 +450,10 @@ export class FruitManager {
   }
 
   /**
-   * Slices an active fruit into two separating halves with outward impulses.
+   * Slices an active fruit into two separating halves with physical outward impulses,
+   * tangential forward blade momentum transfer, and rotational torque.
    */
-  sliceFruit(fruit, cutSegment) {
+  sliceFruit(fruit, cutSegment, hitPoint = null) {
     if (!fruit.active) return;
 
     fruit.sliced = true;
@@ -464,9 +465,19 @@ export class FruitManager {
     const sliceAngle = Math.atan2(dy, dx);
     const len = Math.sqrt(dx * dx + dy * dy);
 
+    // Tangent unit vector along cut direction (swipe vector)
+    const tx = len > 0 ? dx / len : 1;
+    const ty = len > 0 ? dy / len : 0;
+
     // Normal unit vector perpendicular to cut line
     const nx = len > 0 ? -dy / len : 0;
     const ny = len > 0 ? dx / len : 1;
+
+    // Transfer blade tangential momentum to both halves based on swipe speed
+    const swipeSpeed = cutSegment?.speed || 320;
+    const tangentialImpulse = Math.min(180, Math.max(40, swipeSpeed * 0.16));
+    const forwardVx = tx * tangentialImpulse;
+    const forwardVy = ty * tangentialImpulse;
 
     // Outward separation impulse and angular kick configured per fruit variety
     const fruitConfig = FRUIT_CONFIGS[fruit.type] || FRUIT_CONFIGS[FRUIT_TYPES.WATERMELON];
@@ -475,32 +486,42 @@ export class FruitManager {
     const baseKick = fruitConfig.sliceBehavior?.angularKick ?? 4.5;
     const spinMagnitude = baseKick + (Math.random() - 0.5) * 1.5;
 
+    // Off-center torque from exact contact hit point
+    let torqueBias = 0;
+    if (hitPoint) {
+      const cross = (hitPoint.x - fruit.x) * ty - (hitPoint.y - fruit.y) * tx;
+      torqueBias = Math.max(-2.5, Math.min(2.5, (cross / fruit.radius) * 2.2));
+    }
+
+    // Initial separation gap along cut normal to prevent frame 1 overlap
+    const initialGap = 8;
+
     // Half 1 (top / left)
     this.slicedFruitPool.obtain(
-      fruit.x + nx * 6,
-      fruit.y + ny * 6,
-      fruit.vx + nx * sepSpeed,
-      fruit.vy + ny * sepSpeed - 35,
+      fruit.x + nx * initialGap,
+      fruit.y + ny * initialGap,
+      fruit.vx + forwardVx + nx * sepSpeed,
+      fruit.vy + forwardVy + ny * sepSpeed - 35,
       fruit.gravity,
       fruit.radius,
       sliceAngle,
       'top',
       fruit.type,
-      -spinMagnitude
+      -spinMagnitude + torqueBias
     );
 
     // Half 2 (bottom / right)
     this.slicedFruitPool.obtain(
-      fruit.x - nx * 6,
-      fruit.y - ny * 6,
-      fruit.vx - nx * sepSpeed,
-      fruit.vy - ny * sepSpeed - 35,
+      fruit.x - nx * initialGap,
+      fruit.y - ny * initialGap,
+      fruit.vx + forwardVx - nx * sepSpeed,
+      fruit.vy + forwardVy - ny * sepSpeed - 35,
       fruit.gravity,
       fruit.radius,
       sliceAngle,
       'bottom',
       fruit.type,
-      spinMagnitude
+      spinMagnitude + torqueBias
     );
 
     this.fruitPool.release(fruit);

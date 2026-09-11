@@ -307,7 +307,7 @@ export class GameEngine {
         this.collisionManager.checkSliceCollisions(
           cuts,
           this.fruitManager,
-          (fruit, cutSegment) => {
+          (fruit, cutSegment, hitPoint) => {
             // 1. Scoring update decoupled from frame loop
             const result = this.gameState.registerSlice(fruit.type);
 
@@ -317,32 +317,37 @@ export class GameEngine {
               this.audioManager.playCombo(result.combo);
             }
 
-            // 3. Directional juice particles, pulp, and splash flash
+            // 3. Directional juice particles, pulp, impact star spark, and splash flash at exact hitPoint
             this.particleManager.spawnSliceEffects(
               fruit.x,
               fruit.y,
               cutSegment,
               fruit.type,
-              fruit.radius
+              fruit.radius,
+              hitPoint
             );
 
-            // 4. Floating canvas score / combo popup
+            // 4. Floating canvas score / combo popup centered on slice contact
             const popupText = result.multiplier > 1
               ? `+${result.pointsEarned} (${result.combo}x)`
               : `+${result.pointsEarned}`;
             const popupColor = result.multiplier >= 3 ? '#FBBF24' : '#F8FAFC';
-            this.particleManager.spawnScorePopup(fruit.x, fruit.y - 12, popupText, popupColor);
+            const popupX = hitPoint ? hitPoint.x : fruit.x;
+            const popupY = (hitPoint ? hitPoint.y : fruit.y) - 14;
+            this.particleManager.spawnScorePopup(popupX, popupY, popupText, popupColor);
 
-            // 5. Subtle screen micro-impact
-            this.screenShake = Math.min(this.screenShake + 2.8, 5.0);
+            // 5. Crisp physical screen micro-jolt
+            this.screenShake = Math.min(this.screenShake + 3.2, 5.5);
           },
-          (bomb, _cutSegment) => {
+          (bomb, _cutSegment, hitPoint) => {
             // 1. Play synthesized sub-bass explosion
             this.audioManager.init();
             this.audioManager.playBombExplosion();
 
-            // 2. Spawn shockwave rings, fiery embers, and billowing smoke puffs
-            this.particleManager.spawnBombExplosion(bomb.x, bomb.y);
+            // 2. Spawn shockwave rings, fiery embers, and billowing smoke puffs at exact contact point
+            const bombX = hitPoint ? hitPoint.x : bomb.x;
+            const bombY = hitPoint ? hitPoint.y : bomb.y;
+            this.particleManager.spawnBombExplosion(bombX, bombY);
 
             // 3. Trigger 12px maximum explosion screen shake
             this.screenShake = 12.0;
@@ -352,7 +357,7 @@ export class GameEngine {
 
             // 5. Floating canvas penalty popup
             const penaltyText = penalty.scoreLost > 0 ? `-${penalty.scoreLost}` : '-10';
-            this.particleManager.spawnScorePopup(bomb.x, bomb.y - 18, penaltyText, '#EF4444');
+            this.particleManager.spawnScorePopup(bombX, bombY - 18, penaltyText, '#EF4444');
 
             if (penalty.isGameOver) {
               this.triggerGameOverSequence();
