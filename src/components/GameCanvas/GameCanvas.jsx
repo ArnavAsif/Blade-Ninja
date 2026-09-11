@@ -29,7 +29,26 @@ export function GameCanvas({ gameState, onEngineReady }) {
 
     resizeObserver.observe(container);
 
+    // Also listen to visualViewport for dynamic browser UI changes
+    // (Chrome address bar show/hide, iOS toolbar changes)
+    let vpResizeFrame = null;
+    const handleVpResize = () => {
+      if (vpResizeFrame) cancelAnimationFrame(vpResizeFrame);
+      vpResizeFrame = requestAnimationFrame(() => {
+        vpResizeFrame = null;
+        engine.resize();
+      });
+    };
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (vv) {
+      vv.addEventListener('resize', handleVpResize);
+    }
+
     return () => {
+      if (vpResizeFrame) cancelAnimationFrame(vpResizeFrame);
+      if (vv) {
+        vv.removeEventListener('resize', handleVpResize);
+      }
       resizeObserver.disconnect();
       engine.destroy();
       engineRef.current = null;

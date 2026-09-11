@@ -168,14 +168,29 @@ export class GameEngine {
     this.handleResize = this.resize.bind(this);
     this.handleVisibilityChange = this.onVisibilityChange.bind(this);
 
-    window.addEventListener('resize', this.handleResize);
-    window.addEventListener('orientationchange', this.handleResize);
+    // Debounced resize handler for dynamic viewport changes (Chrome address bar show/hide)
+    this.resizeFrame = null;
+    this.debouncedResize = () => {
+      if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = requestAnimationFrame(() => {
+        this.resizeFrame = null;
+        this.resize();
+      });
+    };
+
+    window.addEventListener('resize', this.debouncedResize);
+    window.addEventListener('orientationchange', this.debouncedResize);
     if (typeof window !== 'undefined' && window.screen && window.screen.orientation) {
       try {
-        window.screen.orientation.addEventListener('change', this.handleResize);
+        window.screen.orientation.addEventListener('change', this.debouncedResize);
       } catch {
         // Ignore
       }
+    }
+    // Listen to visualViewport for dynamic browser UI changes (Chrome address bar, iOS Safari toolbar)
+    if (typeof window !== 'undefined' && window.visualViewport) {
+      window.visualViewport.addEventListener('resize', this.debouncedResize);
+      window.visualViewport.addEventListener('scroll', this.debouncedResize);
     }
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.handleVisibilityChange);
@@ -211,9 +226,17 @@ export class GameEngine {
       height = rect.height;
     }
 
+    // Use visualViewport as a direct fallback for accurate visible area dimensions
+    // This handles the case where the container hasn't been resized yet by React's RAF
     if (width <= 0 || height <= 0) {
-      width = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 800;
-      height = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 600;
+      const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+      if (vv && typeof vv.width === 'number' && typeof vv.height === 'number') {
+        width = vv.width;
+        height = vv.height;
+      } else {
+        width = typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 800;
+        height = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 600;
+      }
     }
 
     let targetDpr = getDevicePixelRatio();
@@ -254,6 +277,11 @@ export class GameEngine {
 
     // Bake and resize dynamic 7-layer arcade environment
     this.environment.resize(width, height, this.dpr);
+
+    // Update InputManager with new logical dimensions so touch coordinates stay accurate
+    if (this.inputManager && typeof this.inputManager.setLogicalDimensions === 'function') {
+      this.inputManager.setLogicalDimensions(width, height, this.dpr);
+    }
   }
 
   start() {
@@ -768,14 +796,22 @@ export class GameEngine {
 
   destroy() {
     this.stop();
-    window.removeEventListener('resize', this.handleResize);
-    window.removeEventListener('orientationchange', this.handleResize);
+    if (this.resizeFrame) {
+      cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = null;
+    }
+    window.removeEventListener('resize', this.debouncedResize);
+    window.removeEventListener('orientationchange', this.debouncedResize);
     if (typeof window !== 'undefined' && window.screen && window.screen.orientation) {
       try {
-        window.screen.orientation.removeEventListener('change', this.handleResize);
+        window.screen.orientation.removeEventListener('change', this.debouncedResize);
       } catch {
         // Ignore
       }
+    }
+    if (typeof window !== 'undefined' && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this.debouncedResize);
+      window.visualViewport.removeEventListener('scroll', this.debouncedResize);
     }
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import gsap from 'gsap';
 import { STATES } from '../../game/GameState.js';
+import { requestAppFullscreen } from '../../utils/device.js';
 import { MainMenu } from '../MainMenu/MainMenu.jsx';
 import { ScoreDisplay } from '../Score/ScoreDisplay.jsx';
 import { ComboDisplay } from '../Combo/ComboDisplay.jsx';
@@ -66,6 +67,8 @@ export function GameUI({ gameState, engine, isPortrait = false }) {
 
   const handleStart = () => {
     if (isPortrait) return;
+    // Request fullscreen and landscape lock on user gesture (gracefully ignored if unsupported)
+    requestAppFullscreen();
     if (engine) {
       if (engine.audioManager) {
         try {
@@ -112,6 +115,8 @@ export function GameUI({ gameState, engine, isPortrait = false }) {
   }, [engine]);
 
   const handleRestart = () => {
+    // Re-request fullscreen on restart (user may have exited fullscreen)
+    requestAppFullscreen();
     if (engine) {
       if (engine.audioManager) {
         try {

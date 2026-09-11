@@ -40,6 +40,10 @@ export class InputManager {
     this.rectTop = 0;
     this.rectWidth = 0;
     this.rectHeight = 0;
+    this.logicalWidth = 0;
+    this.logicalHeight = 0;
+    this.scaleX = 1;
+    this.scaleY = 1;
     this.tempCoords = { x: 0, y: 0 };
     this.updateCanvasRect();
 
@@ -93,9 +97,22 @@ export class InputManager {
       this.rectTop = rect.top;
       this.rectWidth = rect.width;
       this.rectHeight = rect.height;
+
+      const logicalW = this.logicalWidth > 0 ? this.logicalWidth : (this.rectWidth > 0 ? this.rectWidth : 800);
+      const logicalH = this.logicalHeight > 0 ? this.logicalHeight : (this.rectHeight > 0 ? this.rectHeight : 600);
+
+      this.scaleX = rect.width > 0 ? logicalW / rect.width : 1;
+      this.scaleY = rect.height > 0 ? logicalH / rect.height : 1;
     } catch {
       // Safe fallback
     }
+  }
+
+  setLogicalDimensions(width, height, dpr = 1) {
+    this.logicalWidth = width;
+    this.logicalHeight = height;
+    this.dpr = dpr;
+    this.updateCanvasRect();
   }
 
   attach() {
@@ -114,6 +131,10 @@ export class InputManager {
       window.addEventListener('gesturestart', this.onGestureStart, { passive: false });
       window.addEventListener('resize', this.onViewportChange, { passive: true });
       window.addEventListener('scroll', this.onViewportChange, { passive: true });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', this.onViewportChange, { passive: true });
+        window.visualViewport.addEventListener('scroll', this.onViewportChange, { passive: true });
+      }
     }
   }
 
@@ -139,12 +160,16 @@ export class InputManager {
       window.removeEventListener('gesturestart', this.onGestureStart);
       window.removeEventListener('resize', this.onViewportChange);
       window.removeEventListener('scroll', this.onViewportChange);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', this.onViewportChange);
+        window.visualViewport.removeEventListener('scroll', this.onViewportChange);
+      }
     }
   }
 
   getCanvasCoordinates(clientX, clientY) {
-    this.tempCoords.x = clientX - this.rectLeft;
-    this.tempCoords.y = clientY - this.rectTop;
+    this.tempCoords.x = (clientX - this.rectLeft) * (this.scaleX || 1);
+    this.tempCoords.y = (clientY - this.rectTop) * (this.scaleY || 1);
     return this.tempCoords;
   }
 

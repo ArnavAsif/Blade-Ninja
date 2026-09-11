@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { isPortrait as checkIsPortrait } from '../../utils/device.js';
 import styles from './OrientationGuard.module.css';
 
 /**
@@ -8,14 +9,11 @@ import styles from './OrientationGuard.module.css';
  * Absolutely no emojis are used.
  */
 export function OrientationGuard({ onPortraitChange = null }) {
-  const [isPortrait, setIsPortrait] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.innerHeight > window.innerWidth;
-  });
+  const [isPortrait, setIsPortrait] = useState(() => checkIsPortrait());
 
   useEffect(() => {
     const evaluateOrientation = () => {
-      const portrait = window.innerHeight > window.innerWidth;
+      const portrait = checkIsPortrait();
       setIsPortrait(portrait);
       if (onPortraitChange) {
         onPortraitChange(portrait);
@@ -26,6 +24,9 @@ export function OrientationGuard({ onPortraitChange = null }) {
 
     window.addEventListener('resize', evaluateOrientation);
     window.addEventListener('orientationchange', evaluateOrientation);
+    if (typeof window !== 'undefined' && window.visualViewport) {
+      window.visualViewport.addEventListener('resize', evaluateOrientation);
+    }
 
     let mql = null;
     if (typeof window.matchMedia === 'function') {
@@ -40,6 +41,9 @@ export function OrientationGuard({ onPortraitChange = null }) {
     return () => {
       window.removeEventListener('resize', evaluateOrientation);
       window.removeEventListener('orientationchange', evaluateOrientation);
+      if (typeof window !== 'undefined' && window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', evaluateOrientation);
+      }
       if (mql) {
         if (typeof mql.removeEventListener === 'function') {
           mql.removeEventListener('change', evaluateOrientation);
