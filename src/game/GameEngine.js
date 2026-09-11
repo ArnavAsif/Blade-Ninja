@@ -12,6 +12,7 @@ import { CollisionManager } from './CollisionManager.js';
 import { AudioManager } from './AudioManager.js';
 import { PowerUpManager } from './PowerUpManager.js';
 import { initPowerUpSprites, POWER_UP_TYPES } from '../assets/PowerUpSprites.js';
+import { ArcadeEnvironment } from './ArcadeEnvironment.js';
 import { getDevicePixelRatio } from '../utils/device.js';
 import { lerp } from '../utils/math.js';
 
@@ -36,6 +37,7 @@ export class GameEngine {
     this.collisionManager = new CollisionManager();
     this.audioManager = new AudioManager();
     this.powerUpManager = new PowerUpManager();
+    this.environment = new ArcadeEnvironment();
 
     // Wire PowerUpManager with GameState, FruitManager, and audio callbacks
     this.powerUpManager.setGameState(this.gameState);
@@ -162,86 +164,6 @@ export class GameEngine {
     }
   }
 
-  updateBackgroundCache(w, h) {
-    if (w <= 0 || h <= 0) return;
-
-    if (!this.bgCanvas) {
-      this.bgCanvas = document.createElement('canvas');
-    }
-    this.bgCanvas.width = Math.max(1, Math.round(w * this.dpr));
-    this.bgCanvas.height = Math.max(1, Math.round(h * this.dpr));
-
-    const bgCtx = this.bgCanvas.getContext('2d');
-    bgCtx.imageSmoothingEnabled = true;
-    bgCtx.imageSmoothingQuality = 'high';
-    bgCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-
-    // 1. Rich dark obsidian dojo wood base
-    bgCtx.fillStyle = '#0B0F15';
-    bgCtx.fillRect(0, 0, w, h);
-
-    // 2. Vertical dojo wood planks tailored for landscape arena
-    const plankWidth = Math.max(64, Math.round(w / 16));
-    const plankCount = Math.ceil(w / plankWidth) + 1;
-
-    for (let i = 0; i < plankCount; i++) {
-      const px = i * plankWidth;
-      const shadeOffset = (i % 2 === 0) ? 0.015 : 0.0;
-
-      // Plank body
-      bgCtx.fillStyle = `rgba(255, 255, 255, ${0.012 + shadeOffset})`;
-      bgCtx.fillRect(px, 0, plankWidth - 2, h);
-
-      // Plank seam line
-      bgCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-      bgCtx.fillRect(px + plankWidth - 2, 0, 2, h);
-
-      // Subtle vertical wood grain striations
-      bgCtx.strokeStyle = 'rgba(255, 255, 255, 0.008)';
-      bgCtx.lineWidth = 1;
-      const subGrains = 2;
-      for (let g = 1; g <= subGrains; g++) {
-        const gx = px + (plankWidth * g) / (subGrains + 1);
-        bgCtx.beginPath();
-        bgCtx.moveTo(gx, 0);
-        bgCtx.lineTo(gx, h);
-        bgCtx.stroke();
-      }
-    }
-
-    // 3. Warm central lantern spotlighting
-    const spotlight = bgCtx.createRadialGradient(
-      w * 0.5,
-      h * 0.42,
-      Math.min(w, h) * 0.08,
-      w * 0.5,
-      h * 0.48,
-      Math.max(w, h) * 0.75
-    );
-    spotlight.addColorStop(0, 'rgba(30, 41, 59, 0.85)');
-    spotlight.addColorStop(0.35, 'rgba(15, 23, 42, 0.70)');
-    spotlight.addColorStop(0.70, 'rgba(10, 15, 26, 0.85)');
-    spotlight.addColorStop(1, 'rgba(5, 7, 12, 0.98)');
-
-    bgCtx.fillStyle = spotlight;
-    bgCtx.fillRect(0, 0, w, h);
-
-    // 4. Subtle arcade perimeter edge vignette
-    const edgeVignette = bgCtx.createRadialGradient(
-      w * 0.5,
-      h * 0.5,
-      Math.min(w, h) * 0.45,
-      w * 0.5,
-      h * 0.5,
-      Math.max(w, h) * 0.75
-    );
-    edgeVignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    edgeVignette.addColorStop(1, 'rgba(0, 0, 0, 0.65)');
-
-    bgCtx.fillStyle = edgeVignette;
-    bgCtx.fillRect(0, 0, w, h);
-  }
-
   resize() {
     if (!this.canvas) return;
 
@@ -273,8 +195,8 @@ export class GameEngine {
     this.ctx.imageSmoothingEnabled = true;
     this.ctx.imageSmoothingQuality = 'high';
 
-    // Pre-render static background into offscreen buffer
-    this.updateBackgroundCache(width, height);
+    // Bake and resize dynamic 7-layer arcade environment
+    this.environment.resize(width, height, this.dpr);
   }
 
   start() {
@@ -349,6 +271,9 @@ export class GameEngine {
     try {
       if (!this.isPaused) {
         this.update(dt);
+      } else {
+        // Calm ambient drift when paused
+        this.environment.update(dt * 0.25, this.gameState);
       }
       this.render();
     } catch (err) {
@@ -357,6 +282,9 @@ export class GameEngine {
   }
 
   update(dt) {
+    // Advance dynamic 7-layer arcade environment
+    this.environment.update(dt, this.gameState);
+
     // Always update blade trail and input so responsive slashing visual works
     this.bladeTrail.update();
 
@@ -626,13 +554,8 @@ export class GameEngine {
       this.ctx.translate(sx, sy);
     }
 
-    // 1. Blit pre-rasterized dark cinematic background
-    if (this.bgCanvas) {
-      this.ctx.drawImage(this.bgCanvas, 0, 0, w, h);
-    } else {
-      this.ctx.fillStyle = '#07090C';
-      this.ctx.fillRect(0, 0, w, h);
-    }
+    // 1. Render dynamic 7-layer modern arcade environment
+    this.environment.render(this.ctx, w, h);
 
     // 2. Render game entities
     this.fruitManager.render(this.ctx);
@@ -747,37 +670,30 @@ export class GameEngine {
   }
 
   /**
-   * Subtle background intensity change and warm dojo lantern aura during Fever mode.
+   * Subtle modern arcade perimeter aura during Fever mode.
    * Smoothly fades in and out with high-performance radial gradients.
    */
   renderFeverScreenEffects(w, h) {
     if (this.feverVignetteAlpha <= 0.01) return;
 
     const pulse = 0.5 + 0.5 * Math.sin(this.feverPulseTime * 4.5);
-    const alpha = this.feverVignetteAlpha * (0.16 + 0.08 * pulse);
+    const alpha = this.feverVignetteAlpha * (0.12 + 0.06 * pulse);
 
-    // 1. Subtle warm amber/crimson ambient glow around perimeter
+    // Subtle electric arcade fever edge aura
     const feverGrad = this.ctx.createRadialGradient(
       w * 0.5,
       h * 0.5,
-      Math.min(w, h) * 0.38,
+      Math.min(w, h) * 0.42,
       w * 0.5,
       h * 0.5,
-      Math.max(w, h) * 0.74
+      Math.max(w, h) * 0.78
     );
-    feverGrad.addColorStop(0, 'rgba(245, 158, 11, 0)');
-    feverGrad.addColorStop(0.70, `rgba(245, 158, 11, ${alpha * 0.45})`);
-    feverGrad.addColorStop(1, `rgba(225, 29, 72, ${alpha * 0.85})`);
+    feverGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+    feverGrad.addColorStop(0.72, `rgba(56, 189, 248, ${alpha * 0.35})`);
+    feverGrad.addColorStop(1, `rgba(245, 158, 11, ${alpha * 0.65})`);
 
     this.ctx.fillStyle = feverGrad;
     this.ctx.fillRect(0, 0, w, h);
-
-    // 2. Soft top dojo lantern surge
-    const topLantern = this.ctx.createLinearGradient(0, 0, 0, 160);
-    topLantern.addColorStop(0, `rgba(251, 191, 36, ${alpha * 0.55})`);
-    topLantern.addColorStop(1, 'rgba(251, 191, 36, 0)');
-    this.ctx.fillStyle = topLantern;
-    this.ctx.fillRect(0, 0, w, 160);
   }
 
   destroy() {
@@ -799,6 +715,10 @@ export class GameEngine {
     }
     if (this.powerUpManager) {
       this.powerUpManager.destroy();
+    }
+    if (this.environment) {
+      this.environment.destroy();
+      this.environment = null;
     }
     if (this.modeUnsubscribe) {
       this.modeUnsubscribe();
