@@ -1,0 +1,398 @@
+.uiLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 24px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.hudLeft {
+  pointer-events: auto;
+}
+
+.hudCenter {
+  pointer-events: none;
+}
+
+.hudRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.pauseIconButton {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(15, 19, 26, 0.75);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pauseIconButton:hover {
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-focus);
+  color: var(--accent-cyan);
+  transform: translateY(-1px);
+}
+
+.pauseIconButton:active {
+  transform: translateY(1px);
+}
+
+.pauseIconButton:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.pauseSvg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Pause Modal */
+.pauseOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 9, 12, 0.85);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+  z-index: 30;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.pauseModal {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  padding: 28px 24px;
+  text-align: center;
+  box-shadow: var(--shadow-card);
+}
+
+.pauseHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.pauseCategory {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+}
+
+.pauseTitle {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #FFFFFF;
+  margin: 0;
+}
+
+.pauseAudioControls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 14px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+}
+
+.pauseAudioRow {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.pauseAudioBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-height: 44px;
+}
+
+.pauseAudioBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-focus);
+}
+
+.pauseAudioBtn:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.btnIcon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-cyan);
+  flex-shrink: 0;
+}
+
+.disabledBtn {
+  opacity: 0.55;
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.disabledBtn .btnIcon {
+  color: var(--text-muted);
+}
+
+.pauseVolumeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.pauseVolumeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pauseVolumeLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pauseVolumeVal {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-family-mono);
+  color: var(--accent-cyan);
+}
+
+.volumeSlider {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-surface);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.volumeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.volumeSlider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.pauseActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resumeButton {
+  width: 100%;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+  color: #FFFFFF;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  box-shadow: 0 6px 18px -3px rgba(2, 132, 199, 0.4);
+  cursor: pointer;
+  transition: transform var(--transition-fast), filter var(--transition-fast);
+  min-height: 48px;
+}
+
+.resumeButton:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.12);
+}
+
+.resumeButton:active {
+  transform: translateY(1px);
+}
+
+.resumeButton:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.menuButton {
+  width: 100%;
+  padding: 12px 20px;
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-height: 44px;
+}
+
+.menuButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: var(--border-focus);
+}
+
+.menuButton:active {
+  transform: translateY(1px);
+}
+
+.menuButton:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .hud {
+    padding: 14px 16px;
+  }
+  .pauseIconButton {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Landscape Mobile & Tablet Optimization */
+@media (max-height: 520px) and (orientation: landscape) {
+  .hud {
+    padding: 8px max(20px, env(safe-area-inset-right)) 8px max(20px, env(safe-area-inset-left));
+  }
+
+  .pauseIconButton {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  .pauseSvg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .pauseModal {
+    max-width: 460px;
+    padding: 16px 20px;
+    border-radius: 14px;
+  }
+
+  .pauseHeader {
+    margin-bottom: 10px;
+  }
+
+  .pauseCategory {
+    font-size: 10px;
+  }
+
+  .pauseTitle {
+    font-size: 20px;
+  }
+
+  .pauseAudioControls {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .pauseAudioRow {
+    gap: 8px;
+  }
+
+  .pauseAudioBtn {
+    padding: 6px 10px;
+    font-size: 11px;
+    min-height: 36px;
+  }
+
+  .pauseVolumeRow {
+    margin-top: 4px;
+  }
+
+  .pauseActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .resumeButton,
+  .menuButton {
+    padding: 8px 12px;
+    min-height: 38px;
+    font-size: 12px;
+  }
+}

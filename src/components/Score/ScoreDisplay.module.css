@@ -1,0 +1,53 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  pointer-events: none;
+  background: rgba(15, 19, 26, 0.7);
+  backdrop-filter: blur(8px);
+  padding: 8px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.statBox {
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.value {
+  display: inline-block;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  font-family: var(--font-family-mono);
+  color: var(--text-primary);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.valuePrimary {
+  color: var(--accent-cyan);
+  text-shadow: 0 0 14px var(--accent-cyan-glow);
+}
+
+@media (max-width: 640px) {
+  .container {
+    gap: 14px;
+    padding: 6px 12px;
+  }
+  .value {
+    font-size: 22px;
+  }
+}

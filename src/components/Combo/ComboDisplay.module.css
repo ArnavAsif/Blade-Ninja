@@ -1,0 +1,68 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  min-height: 48px;
+}
+
+.comboBadge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 18px;
+  background: var(--bg-glass);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 16px rgba(56, 189, 248, 0.25);
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.megaCombo {
+  border-color: rgba(245, 158, 11, 0.7);
+  background: rgba(245, 158, 11, 0.16);
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.4), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.maxCombo {
+  border-color: rgba(244, 63, 94, 0.8);
+  background: rgba(244, 63, 94, 0.2);
+  box-shadow: 0 0 30px rgba(244, 63, 94, 0.5), 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.multiplier {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--accent-cyan);
+  font-family: var(--font-family-mono);
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+}
+
+.megaCombo .multiplier {
+  color: #FDE047;
+  text-shadow: 0 0 12px rgba(253, 224, 71, 0.7);
+}
+
+.maxCombo .multiplier {
+  color: #FDA4AF;
+  text-shadow: 0 0 16px rgba(244, 63, 94, 0.8);
+}
+
+.text {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.megaCombo .text {
+  color: #FEF08A;
+}
+
+.maxCombo .text {
+  color: #FFE4E6;
+}
