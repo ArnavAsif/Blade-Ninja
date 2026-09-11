@@ -11,7 +11,7 @@ import { ActivePowerUps } from '../PowerUps/ActivePowerUps.jsx';
 import { AchievementToast } from '../Achievement/AchievementToast.jsx';
 import styles from './GameUI.module.css';
 
-export function GameUI({ gameState, engine }) {
+export function GameUI({ gameState, engine, isPortrait = false }) {
   const [currentState, setCurrentState] = useState(gameState ? gameState.getState() : STATES.MENU);
   const [audioSettings, setAudioSettings] = useState(() => {
     if (engine && engine.audioManager) {
@@ -65,6 +65,7 @@ export function GameUI({ gameState, engine }) {
   }, [currentState]);
 
   const handleStart = () => {
+    if (isPortrait) return;
     if (engine) {
       if (engine.audioManager) {
         try {
@@ -149,6 +150,21 @@ export function GameUI({ gameState, engine }) {
     }
   };
 
+  const handleEndSession = () => {
+    setIsPauseSettingsOpen(false);
+    if (engine) {
+      if (engine.audioManager) engine.audioManager.playButtonClick();
+      try {
+        engine.stop();
+      } catch {
+        // Ignore stop error
+      }
+    }
+    if (gameState) {
+      gameState.setState(STATES.GAME_OVER);
+    }
+  };
+
   // Keyboard shortcut support: Esc or 'P' to pause/resume
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -196,6 +212,7 @@ export function GameUI({ gameState, engine }) {
           onToggleSound={handleToggleSound}
           onToggleMusic={handleToggleMusic}
           onVolumeChange={handleVolumeChange}
+          isPortrait={isPortrait}
         />
       )}
 
@@ -308,6 +325,15 @@ export function GameUI({ gameState, engine }) {
                 aria-label="Restart Game"
               >
                 Restart
+              </button>
+              <button
+                type="button"
+                className={styles.menuButton}
+                onClick={handleEndSession}
+                onMouseEnter={() => engine?.audioManager?.playButtonHover()}
+                aria-label="End Session and View Summary"
+              >
+                End Session
               </button>
               <button
                 type="button"

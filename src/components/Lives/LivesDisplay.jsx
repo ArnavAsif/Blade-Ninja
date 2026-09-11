@@ -85,6 +85,28 @@ export function LivesDisplay({ gameState }) {
     );
   }
 
+  if (!hasTimer && (lives === null || maxLives === null)) {
+    return (
+      <div
+        className={`${styles.container} ${styles.zenContainer}`}
+        role="status"
+        aria-label="Zen Mode: Relaxed Gameplay"
+      >
+        <div className={styles.zenIconBox}>
+          <svg viewBox="0 0 24 24" className={styles.zenIcon} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2L9.5 7.5C8 10.8 8.4 14.7 10.6 17.6L12 19.5L13.4 17.6C15.6 14.7 16 10.8 14.5 7.5L12 2Z" />
+            <path d="M5.5 10C5.5 14.5 8.5 18 12 19" />
+            <path d="M18.5 10C18.5 14.5 15.5 18 12 19" />
+          </svg>
+        </div>
+        <div className={styles.zenContent}>
+          <span className={styles.label}>Mode</span>
+          <span className={styles.zenValue}>Zen</span>
+        </div>
+      </div>
+    );
+  }
+
   const slots = [];
   const isBombFatal = animatingSlot?.type === 'bomb_fatal';
 

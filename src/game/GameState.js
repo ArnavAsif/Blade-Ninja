@@ -118,7 +118,7 @@ export class GameState {
     try {
       if (typeof window === 'undefined' || !window.localStorage) return 0;
       const key = `${STORAGE_KEY_BEST_SCORE_PREFIX}_${mode}`;
-      const stored = localStorage.getItem(key) || (mode === GAME_MODES.CLASSIC ? localStorage.getItem(STORAGE_KEY_BEST_SCORE_PREFIX) : null);
+      const stored = window.localStorage.getItem(key) || (mode === GAME_MODES.CLASSIC ? window.localStorage.getItem(STORAGE_KEY_BEST_SCORE_PREFIX) : null);
       if (!stored) return 0;
       const parsed = parseInt(stored, 10);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
@@ -131,17 +131,17 @@ export class GameState {
     if (!Number.isFinite(score) || score <= 0) return;
     if (score > this.bestScore) {
       this.bestScore = score;
-      try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          const key = `${STORAGE_KEY_BEST_SCORE_PREFIX}_${mode}`;
-          localStorage.setItem(key, score.toString());
-          if (mode === GAME_MODES.CLASSIC) {
-            localStorage.setItem(STORAGE_KEY_BEST_SCORE_PREFIX, score.toString());
-          }
+    }
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const key = `${STORAGE_KEY_BEST_SCORE_PREFIX}_${mode}`;
+        window.localStorage.setItem(key, score.toString());
+        if (mode === GAME_MODES.CLASSIC) {
+          window.localStorage.setItem(STORAGE_KEY_BEST_SCORE_PREFIX, score.toString());
         }
-      } catch {
-        // Ignore localStorage quota or access limitations
       }
+    } catch {
+      // Ignore localStorage quota or access limitations
     }
   }
 
@@ -150,7 +150,7 @@ export class GameState {
       if (typeof window === 'undefined' || !window.localStorage) {
         return this.getDefaultProgression();
       }
-      const raw = localStorage.getItem(STORAGE_KEY_PROGRESSION);
+      const raw = window.localStorage.getItem(STORAGE_KEY_PROGRESSION);
       if (!raw) return this.getDefaultProgression();
       const parsed = JSON.parse(raw);
       return {
@@ -186,7 +186,7 @@ export class GameState {
   saveProgression() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem(STORAGE_KEY_PROGRESSION, JSON.stringify(this.progression));
+        window.localStorage.setItem(STORAGE_KEY_PROGRESSION, JSON.stringify(this.progression));
       }
     } catch {
       // Ignore quota/security errors

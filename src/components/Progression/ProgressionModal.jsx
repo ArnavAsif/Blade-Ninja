@@ -8,11 +8,20 @@ export function ProgressionModal({
   onClose,
   progressionManager,
   audioManager,
+  initialTab = 'missions',
 }) {
   const overlayRef = useRef(null);
   const modalRef = useRef(null);
 
-  const [activeTab, setActiveTab] = useState('missions');
+  const [userTab, setUserTab] = useState(null);
+  const [prevOpenState, setPrevOpenState] = useState({ isOpen, initialTab });
+
+  if (prevOpenState.isOpen !== isOpen || prevOpenState.initialTab !== initialTab) {
+    setPrevOpenState({ isOpen, initialTab });
+    setUserTab(null);
+  }
+
+  const activeTab = userTab || initialTab || 'missions';
   const [data, setData] = useState(() => {
     if (progressionManager) {
       return {
@@ -152,7 +161,7 @@ export function ProgressionModal({
             className={`${styles.tabButton} ${activeTab === 'missions' ? styles.tabButtonActive : ''}`}
             onClick={() => {
               if (audioManager) audioManager.playButtonClick();
-              setActiveTab('missions');
+              setUserTab('missions');
             }}
           >
             <span>Missions</span>
@@ -168,7 +177,7 @@ export function ProgressionModal({
             className={`${styles.tabButton} ${activeTab === 'profile' ? styles.tabButtonActive : ''}`}
             onClick={() => {
               if (audioManager) audioManager.playButtonClick();
-              setActiveTab('profile');
+              setUserTab('profile');
             }}
           >
             <span>Career Profile</span>
@@ -181,7 +190,7 @@ export function ProgressionModal({
             className={`${styles.tabButton} ${activeTab === 'achievements' ? styles.tabButtonActive : ''}`}
             onClick={() => {
               if (audioManager) audioManager.playButtonClick();
-              setActiveTab('achievements');
+              setUserTab('achievements');
             }}
           >
             <span>Achievements</span>
