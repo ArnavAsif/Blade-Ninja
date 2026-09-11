@@ -169,6 +169,7 @@ export function GameUI({ gameState, engine }) {
           gameState={gameState}
           bestScore={gameState ? gameState.bestScore : 0}
           audioSettings={audioSettings}
+          audioManager={engine ? engine.audioManager : null}
           onToggleSound={handleToggleSound}
           onToggleMusic={handleToggleMusic}
           onVolumeChange={handleVolumeChange}
@@ -191,6 +192,7 @@ export function GameUI({ gameState, engine }) {
               type="button"
               className={styles.pauseIconButton}
               onClick={handlePause}
+              onMouseEnter={() => engine?.audioManager?.playButtonHover()}
               aria-label="Pause game"
             >
               <svg viewBox="0 0 24 24" className={styles.pauseSvg} fill="currentColor">
@@ -216,6 +218,7 @@ export function GameUI({ gameState, engine }) {
                   type="button"
                   className={`${styles.pauseAudioBtn} ${!audioSettings.soundEnabled ? styles.disabledBtn : ''}`}
                   onClick={handleToggleSound}
+                  onMouseEnter={() => engine?.audioManager?.playButtonHover()}
                   aria-label="Toggle Sound Effects"
                 >
                   <svg viewBox="0 0 24 24" className={styles.btnIcon} fill="none" stroke="currentColor" strokeWidth="2">
@@ -228,6 +231,7 @@ export function GameUI({ gameState, engine }) {
                   type="button"
                   className={`${styles.pauseAudioBtn} ${!audioSettings.musicEnabled ? styles.disabledBtn : ''}`}
                   onClick={handleToggleMusic}
+                  onMouseEnter={() => engine?.audioManager?.playButtonHover()}
                   aria-label="Toggle Ambient Music"
                 >
                   <svg viewBox="0 0 24 24" className={styles.btnIcon} fill="none" stroke="currentColor" strokeWidth="2">
@@ -262,6 +266,7 @@ export function GameUI({ gameState, engine }) {
                 type="button"
                 className={styles.resumeButton}
                 onClick={handleResume}
+                onMouseEnter={() => engine?.audioManager?.playButtonHover()}
                 aria-label="Resume Game"
               >
                 Resume
@@ -270,6 +275,7 @@ export function GameUI({ gameState, engine }) {
                 type="button"
                 className={styles.menuButton}
                 onClick={handleRestart}
+                onMouseEnter={() => engine?.audioManager?.playButtonHover()}
                 aria-label="Restart Game"
               >
                 Restart
@@ -277,7 +283,11 @@ export function GameUI({ gameState, engine }) {
               <button
                 type="button"
                 className={styles.menuButton}
-                onClick={() => setIsPauseSettingsOpen(true)}
+                onClick={() => {
+                  if (engine?.audioManager) engine.audioManager.playMenuTransition();
+                  setIsPauseSettingsOpen(true);
+                }}
+                onMouseEnter={() => engine?.audioManager?.playButtonHover()}
                 aria-label="Open Full Settings"
               >
                 More Settings
@@ -286,6 +296,7 @@ export function GameUI({ gameState, engine }) {
                 type="button"
                 className={styles.menuButton}
                 onClick={handleMainMenu}
+                onMouseEnter={() => engine?.audioManager?.playButtonHover()}
                 aria-label="Exit to Main Menu"
               >
                 Main Menu
@@ -297,6 +308,7 @@ export function GameUI({ gameState, engine }) {
             isOpen={isPauseSettingsOpen}
             onClose={() => setIsPauseSettingsOpen(false)}
             audioSettings={audioSettings}
+            audioManager={engine ? engine.audioManager : null}
             onToggleSound={handleToggleSound}
             onToggleMusic={handleToggleMusic}
             onVolumeChange={handleVolumeChange}

@@ -35,6 +35,27 @@ export class GameEngine {
       this.fruitManager.setModeConfig(config);
     });
 
+    // Audio feedback for fruit throws and bomb launches
+    this.fruitManager.onFruitLaunch = () => {
+      this.audioManager.init();
+      this.audioManager.playFruitThrow();
+    };
+    this.fruitManager.onBombLaunch = () => {
+      this.audioManager.init();
+      this.audioManager.playBombThrow();
+    };
+
+    // Countdown audio warnings for timed modes (Zen / Arcade)
+    this.timeUnsubscribe = this.gameState.subscribeTime((timeRemaining) => {
+      if (!this.gameState.is(STATES.PLAYING)) return;
+      const sec = Math.ceil(timeRemaining);
+      if (sec <= 5 && sec > 0) {
+        this.audioManager.playTimeWarning();
+      } else if (sec === 0) {
+        this.audioManager.playTimeUp();
+      }
+    });
+
     // Audio swoosh throttling
     this.lastSwooshTime = 0;
     this.screenShake = 0;
@@ -230,6 +251,7 @@ export class GameEngine {
   }
 
   reset() {
+    this.audioManager.stopBombFuse();
     this.fruitManager.setModeConfig(this.gameState.getModeConfig());
     this.fruitManager.reset();
     this.particleManager.reset();
@@ -298,6 +320,13 @@ export class GameEngine {
     const currentState = this.gameState.getState();
 
     if (currentState === STATES.PLAYING) {
+      // Loop bomb fuse hissing when any bomb is in flight
+      if (this.fruitManager.bombPool.getActiveCount() > 0) {
+        this.audioManager.startBombFuse();
+      } else {
+        this.audioManager.stopBombFuse();
+      }
+
       this.gameState.update(dt);
 
       // Check if round timer reached 0 in timed modes (e.g. Zen or Arcade)
@@ -315,8 +344,8 @@ export class GameEngine {
             // 1. Scoring update decoupled from frame loop
             const result = this.gameState.registerSlice(fruit.type);
 
-            // 2. Play procedural slice audio with fruit-specific timbre and combo chord
-            this.audioManager.playFruitSlice(fruit.type);
+            // 2. Play layered authentic slice audio with fruit-specific timbre and combo chord
+            this.audioManager.playFruitSlice(fruit.type, result.combo);
             if (result.isCombo) {
               this.audioManager.playCombo(result.combo);
             }
@@ -349,8 +378,9 @@ export class GameEngine {
             this.screenShake = Math.min(this.screenShake + 3.0 + comboShakeBonus, 5.8);
           },
           (bomb, _cutSegment, hitPoint) => {
-            // 1. Play synthesized sub-bass explosion
+            // 1. Stop fuse and play visceral sub-bass explosion
             this.audioManager.init();
+            this.audioManager.stopBombFuse();
             this.audioManager.playBombExplosion();
 
             // 2. Spawn shockwave rings, fiery embers, and billowing smoke puffs at exact contact point
@@ -383,6 +413,7 @@ export class GameEngine {
       );
       this.particleManager.update(dt);
     } else {
+      this.audioManager.stopBombFuse();
       this.particleManager.update(dt);
     }
   }
@@ -418,6 +449,7 @@ export class GameEngine {
     if (this.isGameOverTransition) return;
 
     this.fruitManager.stopSpawning = true;
+    this.audioManager.stopBombFuse();
     this.isGameOverTransition = true;
     this.gameOverTimer = 0.75;
     this.audioManager.playGameOver();
@@ -486,6 +518,10 @@ export class GameEngine {
     if (this.modeUnsubscribe) {
       this.modeUnsubscribe();
       this.modeUnsubscribe = null;
+    }
+    if (this.timeUnsubscribe) {
+      this.timeUnsubscribe();
+      this.timeUnsubscribe = null;
     }
     this.inputManager.destroy();
     this.bgCanvas = null;

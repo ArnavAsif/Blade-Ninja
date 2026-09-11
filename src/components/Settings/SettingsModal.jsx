@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import gsap from 'gsap';
 import styles from './SettingsModal.module.css';
 
@@ -6,6 +6,7 @@ export function SettingsModal({
   isOpen,
   onClose,
   audioSettings = { soundEnabled: true, musicEnabled: true, masterVolume: 0.8 },
+  audioManager = null,
   onToggleSound,
   onToggleMusic,
   onVolumeChange,
@@ -13,12 +14,21 @@ export function SettingsModal({
   const overlayRef = useRef(null);
   const modalRef = useRef(null);
 
+  const handleClose = useCallback(() => {
+    if (audioManager) audioManager.playButtonClick();
+    onClose();
+  }, [audioManager, onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
 
+    if (audioManager) {
+      audioManager.playMenuTransition();
+    }
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -40,13 +50,13 @@ export function SettingsModal({
       window.removeEventListener('keydown', handleKeyDown);
       ctx.revert();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, audioManager, handleClose]);
 
   if (!isOpen) return null;
 
   const handleBackdropClick = (e) => {
     if (e.target === overlayRef.current) {
-      onClose();
+      handleClose();
     }
   };
 
@@ -68,7 +78,8 @@ export function SettingsModal({
           <button
             type="button"
             className={styles.closeIconButton}
-            onClick={onClose}
+            onClick={handleClose}
+            onMouseEnter={() => audioManager?.playButtonHover()}
             aria-label="Close settings"
           >
             <svg viewBox="0 0 24 24" className={styles.iconSvg} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -114,6 +125,7 @@ export function SettingsModal({
                 type="button"
                 className={`${styles.toggleCard} ${!audioSettings.soundEnabled ? styles.toggleDisabled : ''}`}
                 onClick={onToggleSound}
+                onMouseEnter={() => audioManager?.playButtonHover()}
                 aria-pressed={audioSettings.soundEnabled}
               >
                 <div className={styles.toggleInfo}>
@@ -137,6 +149,7 @@ export function SettingsModal({
                 type="button"
                 className={`${styles.toggleCard} ${!audioSettings.musicEnabled ? styles.toggleDisabled : ''}`}
                 onClick={onToggleMusic}
+                onMouseEnter={() => audioManager?.playButtonHover()}
                 aria-pressed={audioSettings.musicEnabled}
               >
                 <div className={styles.toggleInfo}>
@@ -178,7 +191,12 @@ export function SettingsModal({
         </div>
 
         <footer className={styles.footer}>
-          <button type="button" className={styles.doneButton} onClick={onClose}>
+          <button
+            type="button"
+            className={styles.doneButton}
+            onClick={handleClose}
+            onMouseEnter={() => audioManager?.playButtonHover()}
+          >
             Done
           </button>
         </footer>

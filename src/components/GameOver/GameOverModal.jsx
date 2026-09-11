@@ -20,6 +20,7 @@ export function GameOverModal({
   const isNewHighScore = score > 0 && score >= bestScore;
 
   const handleRestartClick = useCallback(() => {
+    if (audioManager) audioManager.playButtonClick();
     if (!modalRef.current) {
       onRestart();
       return;
@@ -31,9 +32,10 @@ export function GameOverModal({
       ease: 'power2.in',
       onComplete: onRestart,
     });
-  }, [onRestart]);
+  }, [onRestart, audioManager]);
 
   const handleMenuClick = useCallback(() => {
+    if (audioManager) audioManager.playButtonClick();
     if (!modalRef.current) {
       onMenu();
       return;
@@ -45,7 +47,7 @@ export function GameOverModal({
       ease: 'power2.in',
       onComplete: onMenu,
     });
-  }, [onMenu]);
+  }, [onMenu, audioManager]);
 
   useEffect(() => {
     if (!modalRef.current) return;
@@ -128,6 +130,7 @@ export function GameOverModal({
             type="button"
             className={styles.primaryButton}
             onClick={handleRestartClick}
+            onMouseEnter={() => audioManager?.playButtonHover()}
             aria-label="Play Again"
           >
             Play Again
@@ -136,6 +139,7 @@ export function GameOverModal({
             type="button"
             className={styles.secondaryButton}
             onClick={handleMenuClick}
+            onMouseEnter={() => audioManager?.playButtonHover()}
             aria-label="Return to Main Menu"
           >
             Main Menu

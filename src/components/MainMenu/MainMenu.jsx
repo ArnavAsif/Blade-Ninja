@@ -9,6 +9,7 @@ export function MainMenu({
   gameState,
   bestScore = 0,
   audioSettings = { soundEnabled: true, musicEnabled: true, masterVolume: 0.8 },
+  audioManager = null,
   onToggleSound,
   onToggleMusic,
   onVolumeChange,
@@ -79,6 +80,7 @@ export function MainMenu({
 
   const handlePlayClick = useCallback(() => {
     if (isStarting) return;
+    if (audioManager) audioManager.playButtonClick();
     setIsStarting(true);
 
     // Playful exit transition before starting the gameplay canvas
@@ -102,10 +104,11 @@ export function MainMenu({
         },
       }
     );
-  }, [isStarting, onStart]);
+  }, [isStarting, onStart, audioManager]);
 
   const handleSelectMode = useCallback((modeId) => {
     if (isStarting) return;
+    if (audioManager) audioManager.playButtonClick();
     if (selectedMode === modeId) {
       handlePlayClick();
       return;
@@ -114,7 +117,7 @@ export function MainMenu({
     if (gameState) {
       gameState.setMode(modeId);
     }
-  }, [isStarting, selectedMode, handlePlayClick, gameState]);
+  }, [isStarting, selectedMode, handlePlayClick, gameState, audioManager]);
 
   // Keyboard navigation for Game Mode selection and Game Start
   useEffect(() => {
@@ -179,6 +182,7 @@ export function MainMenu({
                   aria-selected={isActive}
                   className={`${styles.modeTab} ${isActive ? styles.modeTabActive : ''}`}
                   onClick={() => handleSelectMode(mode.id)}
+                  onMouseEnter={() => audioManager?.playButtonHover()}
                 >
                   <span className={styles.modeTabName}>{mode.name}</span>
                   <span className={styles.modeTabTagline}>{mode.tagline}</span>
@@ -215,6 +219,7 @@ export function MainMenu({
             type="button"
             className={styles.playButton}
             onClick={handlePlayClick}
+            onMouseEnter={() => audioManager?.playButtonHover()}
             disabled={isStarting}
             aria-label={`Play ${currentConfig.name} Mode`}
           >
@@ -227,7 +232,11 @@ export function MainMenu({
           <button
             type="button"
             className={styles.settingsTriggerButton}
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => {
+              if (audioManager) audioManager.playMenuTransition();
+              setIsSettingsOpen(true);
+            }}
+            onMouseEnter={() => audioManager?.playButtonHover()}
             aria-label="Open Settings"
           >
             <svg viewBox="0 0 24 24" className={styles.gearIcon} fill="none" stroke="currentColor" strokeWidth="2">
@@ -249,6 +258,7 @@ export function MainMenu({
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         audioSettings={audioSettings}
+        audioManager={audioManager}
         onToggleSound={onToggleSound}
         onToggleMusic={onToggleMusic}
         onVolumeChange={onVolumeChange}

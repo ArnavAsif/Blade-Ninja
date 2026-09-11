@@ -65,6 +65,8 @@ export class FruitManager {
     this.difficulty = 0; // 0.0 to 1.0
     this.stopSpawning = false;
     this.onFruitMissed = null;
+    this.onFruitLaunch = null;
+    this.onBombLaunch = null;
 
     // Queue for staggered multi-fruit wave launches
     this.pendingLaunches = [];
@@ -421,6 +423,9 @@ export class FruitManager {
       params.rotationSpeed,
       performance.now()
     );
+    if (this.onFruitLaunch) {
+      this.onFruitLaunch(params);
+    }
   }
 
   launchBomb(screenWidth, screenHeight) {
@@ -438,6 +443,9 @@ export class FruitManager {
       params.rotationSpeed,
       performance.now()
     );
+    if (this.onBombLaunch) {
+      this.onBombLaunch();
+    }
   }
 
   pickDistinctFruitTypes(count) {
