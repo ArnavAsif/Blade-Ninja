@@ -49,6 +49,11 @@ export class BladeTrail {
     // Power-up & Fever state
     this.isBladeBoostActive = false;
     this.isFeverActive = false;
+    this.performanceMonitor = null;
+  }
+
+  setPerformanceMonitor(monitor) {
+    this.performanceMonitor = monitor;
   }
 
   setBladeBoost(active) {
@@ -100,6 +105,10 @@ export class BladeTrail {
   }
 
   spawnSpark(x, y, swipeAngle) {
+    if (this.performanceMonitor && !this.performanceMonitor.canSpawnSparks()) {
+      return;
+    }
+
     for (let i = 0; i < this.maxSparks; i++) {
       const spark = this.sparks[i];
       if (spark.active) continue;

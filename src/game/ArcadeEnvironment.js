@@ -52,6 +52,16 @@ export class ArcadeEnvironment {
     this.transitionProgress = 1.0;
     this.transitionDuration = 0.85;
 
+    // Adaptive performance monitor
+    this.performanceMonitor = null;
+
+    // Cached gradient objects to eliminate per-frame allocations
+    this.clarityVignetteGrad = null;
+    this.bottomFogGrad = null;
+    this.cachedGradW = 0;
+    this.cachedGradH = 0;
+    this.cachedGradStage = null;
+
     // Image Caching & Preloading
     this.imageCache = new Map();
     this.currentImage = null;
@@ -131,12 +141,46 @@ export class ArcadeEnvironment {
     }
   }
 
+  setPerformanceMonitor(monitor) {
+    this.performanceMonitor = monitor;
+  }
+
   getStageId() {
     return this.currentStageId;
   }
 
   getStageConfig() {
     return this.currentConfig;
+  }
+
+  updateCachedGradients(ctx, w, h) {
+    if (!ctx) return;
+    const cfg = this.currentConfig;
+    const haze = cfg.hazeRgb;
+    const clarityStrength = cfg.clarityMaskStrength;
+    const vignetteStrength = cfg.vignetteStrength;
+
+    this.clarityVignetteGrad = ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.48,
+      Math.min(w, h) * 0.32,
+      w * 0.5,
+      h * 0.48,
+      Math.max(w, h) * 0.78
+    );
+    this.clarityVignetteGrad.addColorStop(0.00, 'rgba(0, 0, 0, 0)');
+    this.clarityVignetteGrad.addColorStop(0.60, `rgba(${haze.r}, ${haze.g}, ${haze.b}, ${clarityStrength})`);
+    this.clarityVignetteGrad.addColorStop(1.00, `rgba(2, 3, 6, ${vignetteStrength})`);
+
+    const fogHeight = Math.min(180, h * 0.28);
+    this.bottomFogGrad = ctx.createLinearGradient(0, h, 0, h - fogHeight);
+    this.bottomFogGrad.addColorStop(0.00, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0.58)`);
+    this.bottomFogGrad.addColorStop(0.50, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0.20)`);
+    this.bottomFogGrad.addColorStop(1.00, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0)`);
+
+    this.cachedGradW = w;
+    this.cachedGradH = h;
+    this.cachedGradStage = cfg.id;
   }
 
   /**
@@ -731,8 +775,18 @@ export class ArcadeEnvironment {
    * Layer 5: Lightweight ambient floating motes/particles.
    * Rendered in a tight zero-allocation loop with stage-tuned colors.
    */
+  /**
+   * Layer 5: Lightweight ambient floating motes/particles.
+   * Rendered in a tight zero-allocation loop with stage-tuned colors.
+   * Dynamically adapts active count based on performance tier.
+   */
   renderParticles(ctx) {
-    for (let i = 0; i < this.particles.length; i++) {
+    const maxParticles = this.performanceMonitor
+      ? this.performanceMonitor.getBackgroundParticleCount()
+      : this.particles.length;
+    const count = Math.min(this.particles.length, maxParticles);
+
+    for (let i = 0; i < count; i++) {
       const p = this.particles[i];
       if (p.alpha <= 0.01) continue;
 
@@ -756,37 +810,25 @@ export class ArcadeEnvironment {
   /**
    * Layer 6: Soft atmospheric depth haze & central clarity contrast mask.
    * Keeps the center slicing zone crystal-clear and frames edges with a cinematic vignette.
+   * Uses cached gradients to eliminate 2 full-screen gradient allocations every frame.
    */
   renderDepthHazeAndClarity(ctx, w, h) {
-    const cfg = this.currentConfig;
-    const haze = cfg.hazeRgb;
-    const clarityStrength = cfg.clarityMaskStrength;
-    const vignetteStrength = cfg.vignetteStrength;
+    if (
+      this.cachedGradW !== w ||
+      this.cachedGradH !== h ||
+      this.cachedGradStage !== this.currentConfig.id ||
+      !this.clarityVignetteGrad
+    ) {
+      this.updateCachedGradients(ctx, w, h);
+    }
 
-    // 1. Central contrast mask: Keeps center fruit space dark, clean, and high-contrast
-    const clarityVignette = ctx.createRadialGradient(
-      w * 0.5,
-      h * 0.48,
-      Math.min(w, h) * 0.32,
-      w * 0.5,
-      h * 0.48,
-      Math.max(w, h) * 0.78
-    );
-    clarityVignette.addColorStop(0.00, 'rgba(0, 0, 0, 0)');
-    clarityVignette.addColorStop(0.60, `rgba(${haze.r}, ${haze.g}, ${haze.b}, ${clarityStrength})`);
-    clarityVignette.addColorStop(1.00, `rgba(2, 3, 6, ${vignetteStrength})`);
-
-    ctx.fillStyle = clarityVignette;
+    // 1. Central contrast mask
+    ctx.fillStyle = this.clarityVignetteGrad;
     ctx.fillRect(0, 0, w, h);
 
     // 2. Soft bottom depth fog band matched to stage haze
     const fogHeight = Math.min(180, h * 0.28);
-    const bottomFog = ctx.createLinearGradient(0, h, 0, h - fogHeight);
-    bottomFog.addColorStop(0.00, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0.58)`);
-    bottomFog.addColorStop(0.50, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0.20)`);
-    bottomFog.addColorStop(1.00, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0)`);
-
-    ctx.fillStyle = bottomFog;
+    ctx.fillStyle = this.bottomFogGrad;
     ctx.fillRect(0, h - fogHeight, w, fogHeight);
   }
 
@@ -825,5 +867,8 @@ export class ArcadeEnvironment {
     this.prevImage = null;
     this.staticCanvas = null;
     this.staticCtx = null;
+    this.clarityVignetteGrad = null;
+    this.bottomFogGrad = null;
+    this.performanceMonitor = null;
   }
 }

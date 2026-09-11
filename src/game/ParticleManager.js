@@ -21,12 +21,20 @@ export class ParticleManager {
     this.maxActiveLimit = 220;
     this.frameSpawnBudget = 60;
     this.spawnsThisFrame = 0;
+    this.performanceMonitor = null;
+  }
+
+  setPerformanceMonitor(monitor) {
+    this.performanceMonitor = monitor;
   }
 
   obtainParticle(...args) {
+    const maxActive = this.performanceMonitor ? this.performanceMonitor.getMaxActiveParticles() : this.maxActiveLimit;
+    const frameBudget = this.performanceMonitor ? this.performanceMonitor.getFrameSpawnBudget() : this.frameSpawnBudget;
+
     if (
-      this.pool.getActiveCount() >= this.maxActiveLimit ||
-      this.spawnsThisFrame >= this.frameSpawnBudget
+      this.pool.getActiveCount() >= maxActive ||
+      this.spawnsThisFrame >= frameBudget
     ) {
       return null;
     }

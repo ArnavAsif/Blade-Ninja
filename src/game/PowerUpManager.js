@@ -12,6 +12,8 @@ export class PowerUpManager {
   constructor() {
     this.activePowerUps = new Map(); // type -> { type, duration, remainingTime, config }
     this.subscribers = new Set();
+    this.timeSinceLastNotify = 0;
+    this.notifyInterval = 0.08; // 12Hz throttle for smooth countdown without 60fps React thrashing
 
     // Spawning pacing & balance configuration
     this.spawnCooldown = 20.0; // Initial delay before first power-up can appear
@@ -128,21 +130,22 @@ export class PowerUpManager {
     // 2. Count down active power-ups
     if (this.activePowerUps.size === 0) return;
 
-    let hasChanged = false;
+    let membershipChanged = false;
     for (const [type, entry] of this.activePowerUps.entries()) {
       entry.remainingTime -= dt;
       if (entry.remainingTime <= 0) {
         this.activePowerUps.delete(type);
-        hasChanged = true;
+        membershipChanged = true;
         if (this.onExpire) {
           this.onExpire(type, entry.config);
         }
-      } else {
-        hasChanged = true;
       }
     }
 
-    if (hasChanged) {
+    this.timeSinceLastNotify += dt;
+    // Notify immediately on membership change (power-up added/expired) or throttled at ~12Hz for smooth countdown without 60fps React thrashing
+    if (membershipChanged || this.timeSinceLastNotify >= this.notifyInterval) {
+      this.timeSinceLastNotify = 0;
       this.notifySubscribers();
     }
   }

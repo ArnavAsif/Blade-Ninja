@@ -13,6 +13,7 @@ import { AudioManager } from './AudioManager.js';
 import { PowerUpManager } from './PowerUpManager.js';
 import { initPowerUpSprites, POWER_UP_TYPES } from '../assets/PowerUpSprites.js';
 import { ArcadeEnvironment } from './ArcadeEnvironment.js';
+import { PerformanceMonitor } from './PerformanceMonitor.js';
 import { getDevicePixelRatio } from '../utils/device.js';
 import { lerp } from '../utils/math.js';
 
@@ -22,7 +23,13 @@ export class GameEngine {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.gameState = gameState;
 
+    // Adaptive performance monitor (auto-adjusts particle limits and graphics budget based on live frame rates)
+    this.performanceMonitor = new PerformanceMonitor();
+
     this.dpr = getDevicePixelRatio();
+    if (this.performanceMonitor) {
+      this.dpr = Math.min(this.dpr, this.performanceMonitor.getDprCap());
+    }
     this.logicalWidth = 0;
     this.logicalHeight = 0;
 
@@ -41,6 +48,11 @@ export class GameEngine {
       ? this.gameState.getActiveBackground()
       : undefined;
     this.environment = new ArcadeEnvironment(initialStage);
+
+    // Wire adaptive performance monitor to visual subsystems
+    this.particleManager.setPerformanceMonitor(this.performanceMonitor);
+    this.environment.setPerformanceMonitor(this.performanceMonitor);
+    this.bladeTrail.setPerformanceMonitor(this.performanceMonitor);
 
     // Synchronize active stage background with GameState
     this.bgUnsubscribe = this.gameState && typeof this.gameState.subscribeBackground === 'function'
@@ -132,6 +144,16 @@ export class GameEngine {
     this.isGameOverTransition = false;
     this.gameOverTimer = 0;
 
+    // Cached screen effect gradients to prevent per-frame allocations
+    this.cachedVignetteWidth = 0;
+    this.cachedVignetteHeight = 0;
+    this.freezeVignetteGrad = null;
+    this.frenzyVignetteGrad = null;
+    this.doubleVignetteGrad = null;
+    this.bladeBoostVignetteGrad = null;
+    this.feverVignetteGrad = null;
+    this.missVignetteGrad = null;
+
     // Offscreen background cache for zero-allocation blitting
     this.bgCanvas = null;
 
@@ -194,18 +216,41 @@ export class GameEngine {
       height = typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 600;
     }
 
+    let targetDpr = getDevicePixelRatio();
+    if (this.performanceMonitor) {
+      targetDpr = Math.min(targetDpr, this.performanceMonitor.getDprCap());
+    }
+
+    const pixelWidth = Math.max(1, Math.round(width * targetDpr));
+    const pixelHeight = Math.max(1, Math.round(height * targetDpr));
+
+    // Avoid expensive GPU buffer reallocation if dimensions and DPR are unchanged
+    if (
+      this.logicalWidth === width &&
+      this.logicalHeight === height &&
+      this.dpr === targetDpr &&
+      this.canvas.width === pixelWidth &&
+      this.canvas.height === pixelHeight
+    ) {
+      return;
+    }
+
     this.logicalWidth = width;
     this.logicalHeight = height;
-    this.dpr = getDevicePixelRatio();
+    this.dpr = targetDpr;
 
     // Scale canvas buffer for high-DPI crisp rendering
-    this.canvas.width = Math.max(1, Math.round(width * this.dpr));
-    this.canvas.height = Math.max(1, Math.round(height * this.dpr));
+    this.canvas.width = pixelWidth;
+    this.canvas.height = pixelHeight;
 
     // Normalize context coordinate system to match CSS pixels
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = true;
     this.ctx.imageSmoothingQuality = 'high';
+
+    // Invalidate cached screen effect gradients on canvas dimension changes
+    this.cachedVignetteWidth = 0;
+    this.cachedVignetteHeight = 0;
 
     // Bake and resize dynamic 7-layer arcade environment
     this.environment.resize(width, height, this.dpr);
@@ -279,6 +324,10 @@ export class GameEngine {
 
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
     this.lastTime = timestamp;
+
+    if (this.performanceMonitor) {
+      this.performanceMonitor.recordFrame(dt);
+    }
 
     try {
       if (!this.isPaused) {
@@ -584,11 +633,12 @@ export class GameEngine {
 
     // 6. Render subtle crimson miss impact vignette along bottom
     if (this.missVignetteAlpha > 0.01) {
-      const missGrad = this.ctx.createLinearGradient(0, h, 0, h - 120);
-      missGrad.addColorStop(0, `rgba(239, 68, 68, ${this.missVignetteAlpha * 0.42})`);
-      missGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
-      this.ctx.fillStyle = missGrad;
-      this.ctx.fillRect(0, h - 120, w, 120);
+      this.updateCachedGradients(w, h);
+      this.ctx.save();
+      this.ctx.globalAlpha = this.missVignetteAlpha;
+      this.ctx.fillStyle = this.missVignetteGrad;
+      this.ctx.fillRect(0, Math.max(0, h - 120), w, 120);
+      this.ctx.restore();
     }
 
     if (hasShake) {
@@ -597,115 +647,123 @@ export class GameEngine {
   }
 
   /**
+   * Pre-allocates and caches full-screen vignette gradients per canvas dimension.
+   * Eliminates mid-game garbage collection and gradient object recreation.
+   */
+  updateCachedGradients(w, h) {
+    if (this.cachedVignetteWidth === w && this.cachedVignetteHeight === h && this.freezeVignetteGrad) {
+      return;
+    }
+    this.cachedVignetteWidth = w;
+    this.cachedVignetteHeight = h;
+
+    const minDim = Math.min(w, h);
+    const maxDim = Math.max(w, h);
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+
+    // Freeze vignette
+    this.freezeVignetteGrad = this.ctx.createRadialGradient(cx, cy, minDim * 0.40, cx, cy, maxDim * 0.76);
+    this.freezeVignetteGrad.addColorStop(0, 'rgba(0, 240, 255, 0)');
+    this.freezeVignetteGrad.addColorStop(0.80, 'rgba(0, 240, 255, 0.28)');
+    this.freezeVignetteGrad.addColorStop(1, 'rgba(2, 132, 199, 1)');
+
+    // Frenzy vignette
+    this.frenzyVignetteGrad = this.ctx.createRadialGradient(cx, cy, minDim * 0.42, cx, cy, maxDim * 0.76);
+    this.frenzyVignetteGrad.addColorStop(0, 'rgba(236, 72, 153, 0)');
+    this.frenzyVignetteGrad.addColorStop(0.82, 'rgba(236, 72, 153, 0.45)');
+    this.frenzyVignetteGrad.addColorStop(1, 'rgba(168, 85, 247, 1)');
+
+    // Double score shimmer vignette
+    this.doubleVignetteGrad = this.ctx.createRadialGradient(cx, cy, minDim * 0.45, cx, cy, maxDim * 0.78);
+    this.doubleVignetteGrad.addColorStop(0, 'rgba(245, 158, 11, 0)');
+    this.doubleVignetteGrad.addColorStop(0.85, 'rgba(245, 158, 11, 0.45)');
+    this.doubleVignetteGrad.addColorStop(1, 'rgba(251, 191, 36, 1)');
+
+    // Blade boost flaming vignette
+    this.bladeBoostVignetteGrad = this.ctx.createRadialGradient(cx, cy, minDim * 0.42, cx, cy, maxDim * 0.76);
+    this.bladeBoostVignetteGrad.addColorStop(0, 'rgba(239, 68, 68, 0)');
+    this.bladeBoostVignetteGrad.addColorStop(0.82, 'rgba(249, 115, 22, 0.45)');
+    this.bladeBoostVignetteGrad.addColorStop(1, 'rgba(239, 68, 68, 1)');
+
+    // Fever mode edge aura
+    this.feverVignetteGrad = this.ctx.createRadialGradient(cx, cy, minDim * 0.42, cx, cy, maxDim * 0.78);
+    this.feverVignetteGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
+    this.feverVignetteGrad.addColorStop(0.72, 'rgba(56, 189, 248, 0.45)');
+    this.feverVignetteGrad.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
+
+    // Bottom miss warning vignette
+    this.missVignetteGrad = this.ctx.createLinearGradient(0, h, 0, Math.max(0, h - 120));
+    this.missVignetteGrad.addColorStop(0, 'rgba(239, 68, 68, 0.42)');
+    this.missVignetteGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+  }
+
+  /**
    * Subtle ambient screen edge vignettes representing active power-up enchantments.
-   * Rendered via high-performance GPU canvas radial gradients.
+   * Rendered via cached zero-allocation radial gradients with globalAlpha modulation.
    */
   renderPowerUpScreenEffects(w, h) {
     if (!this.powerUpManager) return;
+    this.updateCachedGradients(w, h);
 
     const now = performance.now();
 
     // 1. Slow Motion Frost Vignette
     if (this.powerUpManager.isSlowMotionActive().active) {
-      const freezeGrad = this.ctx.createRadialGradient(
-        w * 0.5,
-        h * 0.5,
-        Math.min(w, h) * 0.40,
-        w * 0.5,
-        h * 0.5,
-        Math.max(w, h) * 0.76
-      );
-      freezeGrad.addColorStop(0, 'rgba(0, 240, 255, 0)');
-      freezeGrad.addColorStop(0.80, 'rgba(0, 240, 255, 0.08)');
-      freezeGrad.addColorStop(1, 'rgba(2, 132, 199, 0.28)');
-
-      this.ctx.fillStyle = freezeGrad;
+      this.ctx.save();
+      this.ctx.globalAlpha = 0.28;
+      this.ctx.fillStyle = this.freezeVignetteGrad;
       this.ctx.fillRect(0, 0, w, h);
+      this.ctx.restore();
     }
 
     // 2. Frenzy Neon Pulse Border
     if (this.powerUpManager.isFrenzyActive()) {
       const pulse = 0.5 + 0.5 * Math.sin(now * 0.009);
-      const frenzyGrad = this.ctx.createRadialGradient(
-        w * 0.5,
-        h * 0.5,
-        Math.min(w, h) * 0.42,
-        w * 0.5,
-        h * 0.5,
-        Math.max(w, h) * 0.76
-      );
-      frenzyGrad.addColorStop(0, 'rgba(236, 72, 153, 0)');
-      frenzyGrad.addColorStop(0.82, `rgba(236, 72, 153, ${0.06 + pulse * 0.08})`);
-      frenzyGrad.addColorStop(1, `rgba(168, 85, 247, ${0.20 + pulse * 0.12})`);
-
-      this.ctx.fillStyle = frenzyGrad;
+      this.ctx.save();
+      this.ctx.globalAlpha = 0.20 + pulse * 0.12;
+      this.ctx.fillStyle = this.frenzyVignetteGrad;
       this.ctx.fillRect(0, 0, w, h);
+      this.ctx.restore();
     }
 
     // 3. Double Score Golden Shimmer
     if (this.powerUpManager.isDoubleScoreActive()) {
       const shimmer = 0.5 + 0.5 * Math.sin(now * 0.006);
-      const doubleGrad = this.ctx.createRadialGradient(
-        w * 0.5,
-        h * 0.5,
-        Math.min(w, h) * 0.45,
-        w * 0.5,
-        h * 0.5,
-        Math.max(w, h) * 0.78
-      );
-      doubleGrad.addColorStop(0, 'rgba(245, 158, 11, 0)');
-      doubleGrad.addColorStop(0.85, `rgba(245, 158, 11, ${0.08 + shimmer * 0.06})`);
-      doubleGrad.addColorStop(1, `rgba(251, 191, 36, ${0.22 + shimmer * 0.08})`);
-
-      this.ctx.fillStyle = doubleGrad;
+      this.ctx.save();
+      this.ctx.globalAlpha = 0.22 + shimmer * 0.08;
+      this.ctx.fillStyle = this.doubleVignetteGrad;
       this.ctx.fillRect(0, 0, w, h);
+      this.ctx.restore();
     }
 
     // 4. Blade Boost Flaming Perimeter
     if (this.powerUpManager.isBladeBoostActive()) {
       const flame = 0.5 + 0.5 * Math.sin(now * 0.014);
-      const bladeGrad = this.ctx.createRadialGradient(
-        w * 0.5,
-        h * 0.5,
-        Math.min(w, h) * 0.42,
-        w * 0.5,
-        h * 0.5,
-        Math.max(w, h) * 0.76
-      );
-      bladeGrad.addColorStop(0, 'rgba(239, 68, 68, 0)');
-      bladeGrad.addColorStop(0.82, `rgba(249, 115, 22, ${0.08 + flame * 0.08})`);
-      bladeGrad.addColorStop(1, `rgba(239, 68, 68, ${0.22 + flame * 0.12})`);
-
-      this.ctx.fillStyle = bladeGrad;
+      this.ctx.save();
+      this.ctx.globalAlpha = 0.22 + flame * 0.12;
+      this.ctx.fillStyle = this.bladeBoostVignetteGrad;
       this.ctx.fillRect(0, 0, w, h);
+      this.ctx.restore();
     }
   }
 
   /**
    * Subtle modern arcade perimeter aura during Fever mode.
-   * Smoothly fades in and out with high-performance radial gradients.
+   * Rendered via cached zero-allocation radial gradient with globalAlpha modulation.
    */
   renderFeverScreenEffects(w, h) {
     if (this.feverVignetteAlpha <= 0.01) return;
+    this.updateCachedGradients(w, h);
 
     const pulse = 0.5 + 0.5 * Math.sin(this.feverPulseTime * 4.5);
     const alpha = this.feverVignetteAlpha * (0.12 + 0.06 * pulse);
 
-    // Subtle electric arcade fever edge aura
-    const feverGrad = this.ctx.createRadialGradient(
-      w * 0.5,
-      h * 0.5,
-      Math.min(w, h) * 0.42,
-      w * 0.5,
-      h * 0.5,
-      Math.max(w, h) * 0.78
-    );
-    feverGrad.addColorStop(0, 'rgba(56, 189, 248, 0)');
-    feverGrad.addColorStop(0.72, `rgba(56, 189, 248, ${alpha * 0.35})`);
-    feverGrad.addColorStop(1, `rgba(245, 158, 11, ${alpha * 0.65})`);
-
-    this.ctx.fillStyle = feverGrad;
+    this.ctx.save();
+    this.ctx.globalAlpha = alpha;
+    this.ctx.fillStyle = this.feverVignetteGrad;
     this.ctx.fillRect(0, 0, w, h);
+    this.ctx.restore();
   }
 
   destroy() {
@@ -721,6 +779,10 @@ export class GameEngine {
     }
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (this.performanceMonitor) {
+      this.performanceMonitor.destroy();
+      this.performanceMonitor = null;
     }
     if (this.audioManager) {
       this.audioManager.destroy();
@@ -754,6 +816,12 @@ export class GameEngine {
     }
     this.inputManager.destroy();
     this.bgCanvas = null;
+    this.freezeVignetteGrad = null;
+    this.frenzyVignetteGrad = null;
+    this.doubleVignetteGrad = null;
+    this.bladeBoostVignetteGrad = null;
+    this.feverVignetteGrad = null;
+    this.missVignetteGrad = null;
     this.canvas = null;
     this.ctx = null;
   }

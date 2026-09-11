@@ -66,6 +66,7 @@ export class GameState {
     this.feverTimer = 0;
     this.feverDuration = 7.0;
     this.feverMultiplierBonus = 2;
+    this.feverProgressNotifyTimer = 0;
     this.maxLives = typeof this.modeConfig.lives === 'number' ? (this.modeConfig.maxLives ?? this.modeConfig.lives) : null;
     this.lives = typeof this.modeConfig.lives === 'number' ? this.modeConfig.lives : null;
     this.strikes = 0;
@@ -345,7 +346,11 @@ export class GameState {
       if (this.feverTimer <= 0) {
         this.endFeverMode();
       } else {
-        this.notifyFeverProgress(this.feverTimer, this.feverDuration);
+        this.feverProgressNotifyTimer += dt;
+        if (this.feverProgressNotifyTimer >= 0.08) {
+          this.feverProgressNotifyTimer = 0;
+          this.notifyFeverProgress(this.feverTimer, this.feverDuration);
+        }
       }
     }
 

@@ -35,6 +35,14 @@ export class InputManager {
     this.previousPos = { x: 0, y: 0 };
     this.smoothedSpeed = 0;
 
+    // Cached canvas viewport bounds to prevent getBoundingClientRect layout thrashing
+    this.rectLeft = 0;
+    this.rectTop = 0;
+    this.rectWidth = 0;
+    this.rectHeight = 0;
+    this.tempCoords = { x: 0, y: 0 };
+    this.updateCanvasRect();
+
     // Point memory pool to eliminate garbage collection during rapid swiping
     this.maxTrailPoints = 48;
     this.trailDurationMs = 190; // Lifetime of trail points in ms
@@ -61,6 +69,7 @@ export class InputManager {
     this.onPointerCancel = this.handlePointerCancel.bind(this);
     this.onContextMenu = (e) => e.preventDefault();
     this.onLostPointerCapture = this.handleLostPointerCapture.bind(this);
+    this.onViewportChange = () => this.updateCanvasRect();
 
     // Explicit mobile touch navigation and zoom lock
     this.onTouchStart = (e) => {
@@ -74,6 +83,19 @@ export class InputManager {
     };
 
     this.attach();
+  }
+
+  updateCanvasRect() {
+    if (!this.canvas || typeof this.canvas.getBoundingClientRect !== 'function') return;
+    try {
+      const rect = this.canvas.getBoundingClientRect();
+      this.rectLeft = rect.left;
+      this.rectTop = rect.top;
+      this.rectWidth = rect.width;
+      this.rectHeight = rect.height;
+    } catch {
+      // Safe fallback
+    }
   }
 
   attach() {
@@ -90,6 +112,8 @@ export class InputManager {
       window.addEventListener('pointerup', this.onPointerUp, { passive: false });
       window.addEventListener('pointercancel', this.onPointerCancel, { passive: false });
       window.addEventListener('gesturestart', this.onGestureStart, { passive: false });
+      window.addEventListener('resize', this.onViewportChange, { passive: true });
+      window.addEventListener('scroll', this.onViewportChange, { passive: true });
     }
   }
 
@@ -113,15 +137,15 @@ export class InputManager {
       window.removeEventListener('pointerup', this.onPointerUp);
       window.removeEventListener('pointercancel', this.onPointerCancel);
       window.removeEventListener('gesturestart', this.onGestureStart);
+      window.removeEventListener('resize', this.onViewportChange);
+      window.removeEventListener('scroll', this.onViewportChange);
     }
   }
 
   getCanvasCoordinates(clientX, clientY) {
-    const rect = this.canvas.getBoundingClientRect();
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
-    };
+    this.tempCoords.x = clientX - this.rectLeft;
+    this.tempCoords.y = clientY - this.rectTop;
+    return this.tempCoords;
   }
 
   obtainPoint(x, y, time, speed = 0, vx = 0, vy = 0) {
@@ -167,6 +191,7 @@ export class InputManager {
       // Ignore if setPointerCapture is unsupported
     }
 
+    this.updateCanvasRect();
     const coords = this.getCanvasCoordinates(e.clientX, e.clientY);
     const now = performance.now();
 
