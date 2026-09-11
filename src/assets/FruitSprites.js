@@ -13,56 +13,130 @@ export const FRUIT_TYPES = Object.freeze({
   STRAWBERRY: 'strawberry',
   DRAGON_FRUIT: 'dragonfruit',
   COCONUT: 'coconut',
+  KIWI: 'kiwi',
+  PEACH: 'peach',
 });
 
 export const FRUIT_CONFIGS = Object.freeze({
   [FRUIT_TYPES.WATERMELON]: {
+    name: 'Watermelon',
     radius: 46,
+    weight: 1.22,
+    rotationSpeedRange: [1.2, 2.4],
+    score: 1,
+    sliceBehavior: { separationSpeed: 210, angularKick: 3.8 },
     juiceColor: '#F43F5E',
     pulpColor: '#E11D48',
     rindColor: '#15803D',
+    particleProfile: { droplets: 12, pulpCount: 6, splashScale: 1.25 },
   },
   [FRUIT_TYPES.APPLE]: {
+    name: 'Apple',
     radius: 38,
+    weight: 1.02,
+    rotationSpeedRange: [2.2, 3.8],
+    score: 1,
+    sliceBehavior: { separationSpeed: 250, angularKick: 5.2 },
     juiceColor: '#FEF08A',
     pulpColor: '#FEF9C3',
     rindColor: '#DC2626',
+    particleProfile: { droplets: 8, pulpCount: 5, splashScale: 1.0 },
   },
   [FRUIT_TYPES.ORANGE]: {
+    name: 'Orange',
     radius: 38,
+    weight: 1.00,
+    rotationSpeedRange: [2.0, 3.6],
+    score: 1,
+    sliceBehavior: { separationSpeed: 235, angularKick: 4.8 },
     juiceColor: '#F97316',
     pulpColor: '#FB923C',
     rindColor: '#EA580C',
+    particleProfile: { droplets: 10, pulpCount: 8, splashScale: 1.05 },
   },
   [FRUIT_TYPES.BANANA]: {
+    name: 'Banana',
     radius: 40,
+    weight: 0.90,
+    rotationSpeedRange: [3.2, 5.6],
+    score: 2,
+    sliceBehavior: { separationSpeed: 200, angularKick: 6.2 },
     juiceColor: '#FEF08A',
     pulpColor: '#FEF9C3',
     rindColor: '#FACC15',
+    particleProfile: { droplets: 7, pulpCount: 4, splashScale: 0.95 },
   },
   [FRUIT_TYPES.PINEAPPLE]: {
+    name: 'Pineapple',
     radius: 46,
+    weight: 1.18,
+    rotationSpeedRange: [1.6, 2.8],
+    score: 3,
+    sliceBehavior: { separationSpeed: 225, angularKick: 4.2 },
     juiceColor: '#F59E0B',
     pulpColor: '#FBBF24',
     rindColor: '#78350F',
+    particleProfile: { droplets: 9, pulpCount: 6, splashScale: 1.15 },
   },
   [FRUIT_TYPES.STRAWBERRY]: {
+    name: 'Strawberry',
     radius: 34,
+    weight: 0.82,
+    rotationSpeedRange: [3.5, 6.2],
+    score: 2,
+    sliceBehavior: { separationSpeed: 270, angularKick: 6.8 },
     juiceColor: '#E11D48',
     pulpColor: '#FB7185',
     rindColor: '#9F1239',
+    particleProfile: { droplets: 7, pulpCount: 5, splashScale: 0.9 },
   },
   [FRUIT_TYPES.DRAGON_FRUIT]: {
+    name: 'Dragon Fruit',
     radius: 44,
+    weight: 1.08,
+    rotationSpeedRange: [1.8, 3.4],
+    score: 4,
+    sliceBehavior: { separationSpeed: 240, angularKick: 4.6 },
     juiceColor: '#EC4899',
     pulpColor: '#F8FAFC',
     rindColor: '#BE185D',
+    particleProfile: { droplets: 11, pulpCount: 9, splashScale: 1.2 },
   },
   [FRUIT_TYPES.COCONUT]: {
+    name: 'Coconut',
     radius: 42,
+    weight: 1.25,
+    rotationSpeedRange: [1.4, 2.6],
+    score: 3,
+    sliceBehavior: { separationSpeed: 230, angularKick: 4.0 },
     juiceColor: '#F8FAFC',
     pulpColor: '#FFFFFF',
     rindColor: '#78350F',
+    particleProfile: { droplets: 8, pulpCount: 7, splashScale: 1.1 },
+  },
+  [FRUIT_TYPES.KIWI]: {
+    name: 'Kiwi',
+    radius: 36,
+    weight: 0.88,
+    rotationSpeedRange: [3.0, 5.4],
+    score: 2,
+    sliceBehavior: { separationSpeed: 260, angularKick: 5.8 },
+    juiceColor: '#22C55E',
+    pulpColor: '#84CC16',
+    rindColor: '#78350F',
+    particleProfile: { droplets: 9, pulpCount: 8, splashScale: 0.95 },
+  },
+  [FRUIT_TYPES.PEACH]: {
+    name: 'Peach',
+    radius: 40,
+    weight: 1.05,
+    rotationSpeedRange: [2.0, 3.6],
+    score: 3,
+    sliceBehavior: { separationSpeed: 215, angularKick: 4.8 },
+    juiceColor: '#FB7185',
+    pulpColor: '#FDBA74',
+    rindColor: '#E11D48',
+    particleProfile: { droplets: 10, pulpCount: 7, splashScale: 1.1 },
   },
 });
 
@@ -749,6 +823,239 @@ function drawCoconutHalf(ctx, isTop) {
 }
 
 // -------------------------------------------------------------
+// 9. KIWI
+// -------------------------------------------------------------
+function drawKiwiWhole(ctx) {
+  const r = 44;
+  // Brown fuzzy oval body
+  const grad = ctx.createRadialGradient(-10, -12, 5, 0, 0, r);
+  grad.addColorStop(0, '#B45309');
+  grad.addColorStop(0.35, '#92400E');
+  grad.addColorStop(0.75, '#78350F');
+  grad.addColorStop(1, '#451A03');
+
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.88, r * 1.02, 0, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Fine bristle fuzz texture around outer rind
+  ctx.strokeStyle = 'rgba(69, 26, 3, 0.45)';
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const ex = Math.cos(a) * r * 0.88;
+    const ey = Math.sin(a) * r * 1.02;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex + Math.cos(a) * 3.5, ey + Math.sin(a) * 3.5);
+    ctx.stroke();
+  }
+
+  // Woody stem button at top pole
+  ctx.beginPath();
+  ctx.arc(0, -r * 0.98, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#291809';
+  ctx.fill();
+  ctx.strokeStyle = '#78350F';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+}
+
+function drawKiwiHalf(ctx, isTop) {
+  const r = 44;
+  const start = isTop ? Math.PI : 0;
+  const end = isTop ? Math.PI * 2 : Math.PI;
+
+  // Fuzzy brown outer skin
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.88, r * 1.02, 0, start, end);
+  ctx.closePath();
+  ctx.fillStyle = '#78350F';
+  ctx.fill();
+
+  // Lime green rind edge ring
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.84, r * 0.97, 0, start, end);
+  ctx.closePath();
+  ctx.fillStyle = '#A3E635';
+  ctx.fill();
+
+  // Translucent emerald pulp gradient
+  const pulpGrad = ctx.createRadialGradient(0, 0, 3, 0, 0, r * 0.92);
+  pulpGrad.addColorStop(0, '#84CC16');
+  pulpGrad.addColorStop(0.4, '#4ADE80');
+  pulpGrad.addColorStop(0.8, '#22C55E');
+  pulpGrad.addColorStop(1, '#15803D');
+
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.80, r * 0.93, 0, start, end);
+  ctx.closePath();
+  ctx.fillStyle = pulpGrad;
+  ctx.fill();
+
+  // Radiating delicate creamy starburst rays
+  ctx.strokeStyle = 'rgba(254, 249, 195, 0.45)';
+  ctx.lineWidth = 1.4;
+  const rayCount = 14;
+  for (let i = 1; i < rayCount; i++) {
+    const a = start + (i / rayCount) * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r * 0.22, Math.sin(a) * r * 0.25);
+    ctx.lineTo(Math.cos(a) * r * 0.68, Math.sin(a) * r * 0.78);
+    ctx.stroke();
+  }
+
+  // Ring of tiny black kiwi seeds
+  ctx.fillStyle = '#0F172A';
+  const seedCount = 12;
+  for (let i = 1; i < seedCount; i++) {
+    const a = start + (i / seedCount) * Math.PI;
+    const sx = Math.cos(a) * r * 0.44 + (Math.sin(i * 3.7) * 2.5);
+    const sy = Math.sin(a) * r * 0.50 + (Math.cos(i * 3.7) * 2.5);
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 1.2, 2.0, a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Creamy pale-yellow oval core
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.22, r * 0.26, 0, start, end);
+  ctx.closePath();
+  ctx.fillStyle = '#FEF9C3';
+  ctx.fill();
+}
+
+// -------------------------------------------------------------
+// 10. PEACH
+// -------------------------------------------------------------
+function drawPeachWhole(ctx) {
+  const r = 46;
+
+  // Velvety blush radial gradient
+  const grad = ctx.createRadialGradient(-r * 0.28, -r * 0.32, 6, 0, 0, r);
+  grad.addColorStop(0, '#FEF08A');
+  grad.addColorStop(0.30, '#FDBA74');
+  grad.addColorStop(0.65, '#FB7185');
+  grad.addColorStop(0.88, '#F43F5E');
+  grad.addColorStop(1, '#BE123C');
+
+  // Heart-like iconic peach silhouette with top cleft indent
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.72);
+  // Left cheek
+  ctx.bezierCurveTo(-r * 0.55, -r * 1.02, -r * 1.15, -r * 0.28, -r * 0.92, r * 0.45);
+  ctx.bezierCurveTo(-r * 0.72, r * 0.98, -r * 0.25, r * 1.05, 0, r * 0.98);
+  // Right cheek
+  ctx.bezierCurveTo(r * 0.25, r * 1.05, r * 0.72, r * 0.98, r * 0.92, r * 0.45);
+  ctx.bezierCurveTo(r * 1.15, -r * 0.28, r * 0.55, -r * 1.02, 0, -r * 0.72);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Subtle curved peach suture cleft crease line
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.72);
+  ctx.quadraticCurveTo(-r * 0.15, 0, 0, r * 0.98);
+  ctx.strokeStyle = 'rgba(190, 18, 60, 0.35)';
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+
+  // Velvety soft peach sheen
+  ctx.beginPath();
+  ctx.arc(-r * 0.32, -r * 0.28, r * 0.42, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+  ctx.fill();
+
+  // Small woody stem at cleft
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.72);
+  ctx.quadraticCurveTo(3, -r * 0.88, 5, -r * 0.95);
+  ctx.strokeStyle = '#78350F';
+  ctx.lineWidth = 2.8;
+  ctx.stroke();
+
+  // Fresh green peach leaf sprouting from stem
+  ctx.fillStyle = '#16A34A';
+  ctx.beginPath();
+  ctx.moveTo(3, -r * 0.85);
+  ctx.quadraticCurveTo(16, -r * 1.08, 22, -r * 0.88);
+  ctx.quadraticCurveTo(14, -r * 0.74, 3, -r * 0.85);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawPeachHalf(ctx, isTop) {
+  const r = 46;
+  const start = isTop ? Math.PI : 0;
+  const end = isTop ? Math.PI * 2 : Math.PI;
+
+  // Velvety blush outer skin rind
+  ctx.beginPath();
+  ctx.arc(0, 0, r, start, end);
+  ctx.closePath();
+  ctx.fillStyle = '#E11D48';
+  ctx.fill();
+
+  // Juicy golden amber/peach pulp gradient
+  const meatGrad = ctx.createRadialGradient(0, isTop ? -10 : 10, 5, 0, 0, r * 0.92);
+  meatGrad.addColorStop(0, '#FEF08A');
+  meatGrad.addColorStop(0.35, '#FED7AA');
+  meatGrad.addColorStop(0.70, '#FDBA74');
+  meatGrad.addColorStop(1, '#FB923C');
+
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.91, start, end);
+  ctx.closePath();
+  ctx.fillStyle = meatGrad;
+  ctx.fill();
+
+  // Crimson/ruby radial starburst fibers radiating around pit
+  ctx.strokeStyle = '#BE123C';
+  ctx.lineWidth = 1.6;
+  for (let i = 1; i <= 7; i++) {
+    const a = start + (i / 8) * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r * 0.28, Math.sin(a) * r * 0.28);
+    ctx.lineTo(Math.cos(a) * r * 0.58, Math.sin(a) * r * 0.58);
+    ctx.stroke();
+  }
+
+  // Craggy textured mahogany pit (on top half) or indented cavity (on bottom half)
+  if (isTop) {
+    const pitGrad = ctx.createRadialGradient(0, -r * 0.15, 2, 0, -r * 0.15, r * 0.28);
+    pitGrad.addColorStop(0, '#92400E');
+    pitGrad.addColorStop(0.5, '#78350F');
+    pitGrad.addColorStop(1, '#451A03');
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.26, r * 0.32, 0, start, end);
+    ctx.closePath();
+    ctx.fillStyle = pitGrad;
+    ctx.fill();
+
+    // Pit craggy ridges
+    ctx.strokeStyle = '#451A03';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.14, r * 0.16, start, end);
+    ctx.stroke();
+  } else {
+    // Indented pit cavity with deep ruby glow
+    const cavityGrad = ctx.createRadialGradient(0, 5, 2, 0, 10, r * 0.30);
+    cavityGrad.addColorStop(0, '#9F1239');
+    cavityGrad.addColorStop(0.7, '#881337');
+    cavityGrad.addColorStop(1, '#4C0519');
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.26, r * 0.32, 0, start, end);
+    ctx.closePath();
+    ctx.fillStyle = cavityGrad;
+    ctx.fill();
+  }
+}
+
+// -------------------------------------------------------------
 // SPRITE GENERATOR & REGISTRY
 // -------------------------------------------------------------
 export function initializeFruitSprites() {
@@ -794,6 +1101,16 @@ export function initializeFruitSprites() {
       whole: drawCoconutWhole,
       left: (ctx) => drawCoconutHalf(ctx, true),
       right: (ctx) => drawCoconutHalf(ctx, false),
+    },
+    [FRUIT_TYPES.KIWI]: {
+      whole: drawKiwiWhole,
+      left: (ctx) => drawKiwiHalf(ctx, true),
+      right: (ctx) => drawKiwiHalf(ctx, false),
+    },
+    [FRUIT_TYPES.PEACH]: {
+      whole: drawPeachWhole,
+      left: (ctx) => drawPeachHalf(ctx, true),
+      right: (ctx) => drawPeachHalf(ctx, false),
     },
   };
 

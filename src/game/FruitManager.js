@@ -3,7 +3,7 @@
  * progressive difficulty scaling, and zero-allocation object pooling.
  */
 
-import { Fruit, FRUIT_TYPES } from '../entities/Fruit.js';
+import { Fruit, FRUIT_TYPES, FRUIT_CONFIGS } from '../entities/Fruit.js';
 import { Bomb } from '../entities/Bomb.js';
 import { SlicedFruit } from '../entities/SlicedFruit.js';
 import { ObjectPool } from '../utils/pool.js';
@@ -19,6 +19,8 @@ const AVAILABLE_FRUIT_TYPES = [
   FRUIT_TYPES.STRAWBERRY,
   FRUIT_TYPES.DRAGON_FRUIT,
   FRUIT_TYPES.COCONUT,
+  FRUIT_TYPES.KIWI,
+  FRUIT_TYPES.PEACH,
 ];
 
 export class FruitManager {
@@ -291,15 +293,18 @@ export class FruitManager {
     // Gravity tuned specifically for landscape viewports (height 320px - 900px)
     const gravityScale = Math.max(0.68, Math.min(1.35, screenHeight / 750));
     const gravity = this.config.baseGravity * gravityScale * gravityMultiplier;
+    const fruitConfig = fruitType ? FRUIT_CONFIGS[fruitType] : null;
+    const weight = fruitConfig?.weight ?? 1.0;
+    const effectiveGravity = gravity * weight;
 
     const yStart = screenHeight + 50 + randomRange(10, 30);
     const deltaY = yStart - targetApexY;
 
-    // Initial vertical velocity needed to peak at targetApexY
-    let vy = -Math.sqrt(2 * gravity * deltaY);
+    // Initial vertical velocity needed to peak at targetApexY taking weight into account
+    let vy = -Math.sqrt(2 * effectiveGravity * deltaY);
 
-    // Time to reach peak apex: vy / gravity
-    const timeToApex = -vy / gravity;
+    // Time to reach peak apex: vy / effectiveGravity
+    const timeToApex = -vy / effectiveGravity;
 
     // Horizontal velocity to arrive at targetApexX at peak
     let vx = (safeTargetApexX - safeXStart) / timeToApex;
@@ -310,9 +315,10 @@ export class FruitManager {
       vx *= speedMultiplier;
     }
 
-    // Natural spin biased toward flight direction
+    // Natural spin biased toward flight direction with fruit-specific rotation profile
     const spinDirection = vx >= 0 ? 1 : -1;
-    const rotationSpeed = spinDirection * randomRange(1.8, 4.2);
+    const [minRot, maxRot] = fruitConfig?.rotationSpeedRange ?? [1.8, 4.2];
+    const rotationSpeed = spinDirection * randomRange(minRot, maxRot);
 
     return {
       x: safeXStart,
@@ -462,8 +468,12 @@ export class FruitManager {
     const nx = len > 0 ? -dy / len : 0;
     const ny = len > 0 ? dx / len : 1;
 
-    // Outward impulse away from slice trajectory
-    const sepSpeed = 190 + Math.random() * 80;
+    // Outward separation impulse and angular kick configured per fruit variety
+    const fruitConfig = FRUIT_CONFIGS[fruit.type] || FRUIT_CONFIGS[FRUIT_TYPES.WATERMELON];
+    const baseSep = fruitConfig.sliceBehavior?.separationSpeed ?? 220;
+    const sepSpeed = baseSep + (Math.random() - 0.5) * 40;
+    const baseKick = fruitConfig.sliceBehavior?.angularKick ?? 4.5;
+    const spinMagnitude = baseKick + (Math.random() - 0.5) * 1.5;
 
     // Half 1 (top / left)
     this.slicedFruitPool.obtain(
@@ -475,7 +485,8 @@ export class FruitManager {
       fruit.radius,
       sliceAngle,
       'top',
-      fruit.type
+      fruit.type,
+      -spinMagnitude
     );
 
     // Half 2 (bottom / right)
@@ -488,7 +499,8 @@ export class FruitManager {
       fruit.radius,
       sliceAngle,
       'bottom',
-      fruit.type
+      fruit.type,
+      spinMagnitude
     );
 
     this.fruitPool.release(fruit);

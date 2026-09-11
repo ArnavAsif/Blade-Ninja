@@ -19,6 +19,7 @@ export class Fruit {
     this.vx = 0;
     this.vy = 0;
     this.gravity = 980;
+    this.weight = 1.0;
     this.rotation = 0;
     this.rotationSpeed = 0;
     this.radius = 40;
@@ -27,6 +28,7 @@ export class Fruit {
     this.active = false;
     this.sliced = false;
     this.spawnTime = 0;
+    this.flightTime = 0;
     this.hasReachedApex = false;
     this.missedHandled = false;
   }
@@ -43,11 +45,13 @@ export class Fruit {
     this.type = type;
     this.config = FRUIT_CONFIGS[type] || FRUIT_CONFIGS[FRUIT_TYPES.WATERMELON];
     this.radius = this.config.radius;
+    this.weight = this.config.weight || 1.0;
     this.rotation = Math.random() * Math.PI * 2;
     this.rotationSpeed = rotationSpeed;
     this.active = true;
     this.sliced = false;
     this.spawnTime = spawnTime;
+    this.flightTime = 0;
     this.hasReachedApex = false;
     this.missedHandled = false;
   }
@@ -55,8 +59,10 @@ export class Fruit {
   update(dt, screenWidth, screenHeight) {
     if (!this.active) return;
 
-    // Apply gravity acceleration
-    this.vy += this.gravity * dt;
+    this.flightTime += dt;
+
+    // Apply gravity acceleration modulated by fruit-specific weight
+    this.vy += this.gravity * this.weight * dt;
 
     // Integrate position
     this.x += this.vx * dt;
@@ -88,31 +94,45 @@ export class Fruit {
   render(ctx) {
     if (!this.active) return;
 
-    // 1. Two-tier ambient + contact depth shadow behind fruit
-    ctx.save();
-    ctx.translate(this.x + 8, this.y + 13);
+    // 1. Launch squash & stretch deformation
+    let scaleX = 1.0;
+    let scaleY = 1.0;
+    let stretchAngle = 0;
 
-    // Tier 1: Soft diffuse ambient elevation shadow
-    ctx.beginPath();
-    ctx.ellipse(0, 0, this.radius * 1.05, this.radius * 0.62, 0.15, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
-    ctx.fill();
-
-    // Tier 2: Crisp grounding contact shadow
-    ctx.beginPath();
-    ctx.ellipse(-2, -2, this.radius * 0.75, this.radius * 0.44, 0.15, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
-    ctx.fill();
-    ctx.restore();
+    if (this.flightTime < 0.30) {
+      const t = this.flightTime / 0.30;
+      // Damped spring impulse along trajectory velocity vector
+      const stretchAmount = 0.14 * Math.sin((1 - t) * Math.PI) * Math.exp(-t * 3.6);
+      if (stretchAmount > 0.005) {
+        stretchAngle = Math.atan2(this.vy, this.vx);
+        scaleX = 1.0 + stretchAmount;
+        scaleY = 1.0 / Math.sqrt(scaleX); // Strictly preserve fruit volume
+      }
+    }
 
     // 2. Transformed fruit body
     ctx.save();
     ctx.translate(this.x, this.y);
+
+    if (scaleX !== 1.0) {
+      ctx.rotate(stretchAngle);
+      ctx.scale(scaleX, scaleY);
+      ctx.rotate(-stretchAngle);
+    }
+
     ctx.rotate(this.rotation);
 
     const sprite = getFruitSprite(this.type, 'whole');
     if (sprite) {
       const renderDiameter = this.radius * 2.25;
+
+      // Natural directional drop shadow following the exact silhouette of the fruit
+      // without creating any artificial circular rings, halos, or outlines
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 6;
+
       ctx.drawImage(
         sprite,
         -renderDiameter * 0.5,
@@ -121,21 +141,8 @@ export class Fruit {
         renderDiameter
       );
 
-      // Primary specular curved glint along upper rim
-      ctx.beginPath();
-      ctx.arc(-this.radius * 0.15, -this.radius * 0.2, this.radius * 0.68, -Math.PI * 0.82, -Math.PI * 0.18);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-      ctx.lineWidth = Math.max(2, this.radius * 0.08);
-      ctx.lineCap = 'round';
-      ctx.stroke();
-
-      // Subtle secondary bounce light on opposite lower rim for volumetric depth
-      ctx.beginPath();
-      ctx.arc(this.radius * 0.12, this.radius * 0.16, this.radius * 0.70, Math.PI * 0.2, Math.PI * 0.62);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
-      ctx.lineWidth = Math.max(1.5, this.radius * 0.05);
-      ctx.lineCap = 'round';
-      ctx.stroke();
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
     } else {
       // Fallback
       ctx.beginPath();

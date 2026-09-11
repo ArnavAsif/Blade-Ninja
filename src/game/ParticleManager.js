@@ -23,7 +23,8 @@ export class ParticleManager {
    */
   spawnSliceEffects(x, y, cutSegment, fruitType, radius = 40) {
     const config = FRUIT_CONFIGS[fruitType] || FRUIT_CONFIGS[FRUIT_TYPES.WATERMELON];
-    const { juiceColor, pulpColor } = config;
+    const { juiceColor, pulpColor, particleProfile } = config;
+    const profile = particleProfile || { droplets: 8, pulpCount: 5, splashScale: 1.0 };
 
     const { p1, p2 } = cutSegment;
     const dx = p2.x - p1.x;
@@ -38,7 +39,8 @@ export class ParticleManager {
     const tx = len > 0 ? dx / len : 1;
     const ty = len > 0 ? dy / len : 0;
 
-    // 1. Slice Splash Flash (short-lived radiant line along cut)
+    // 1. Slice Splash Flash (short-lived radiant line along cut, scaled by profile)
+    const splashLength = radius * 2.2 * (profile.splashScale || 1.0);
     this.pool.obtain(
       x,
       y,
@@ -51,11 +53,11 @@ export class ParticleManager {
       'splash_line',
       cutAngle,
       0,
-      radius * 2.2
+      splashLength
     );
 
-    // 2. Directional Juice Droplets (7 - 10 particles)
-    const dropletCount = 8;
+    // 2. Directional Juice Droplets tailored to fruit variety
+    const dropletCount = profile.droplets || 8;
     for (let i = 0; i < dropletCount; i++) {
       const side = i % 2 === 0 ? 1 : -1;
       const normalSpeed = side * randomRange(120, 320);
@@ -81,8 +83,8 @@ export class ParticleManager {
       );
     }
 
-    // 3. Tiny Pulp Particles (4 - 6 particles)
-    const pulpCount = 5;
+    // 3. Fleshy Pulp Particles tailored to fruit variety
+    const pulpCount = profile.pulpCount || 5;
     for (let i = 0; i < pulpCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = randomRange(40, 150);

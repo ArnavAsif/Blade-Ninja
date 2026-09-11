@@ -17,6 +17,8 @@ export const FRUIT_POINTS = Object.freeze({
   orange: 1,
   banana: 2,
   strawberry: 2,
+  kiwi: 2,
+  peach: 3,
   pineapple: 3,
   coconut: 3,
   dragonfruit: 4,

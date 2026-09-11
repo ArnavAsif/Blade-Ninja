@@ -156,31 +156,19 @@ export class Bomb {
 
     const r = this.radius;
 
-    // 1. Two-tier ambient + contact depth shadow behind bomb
-    ctx.save();
-    ctx.translate(this.x + 8, this.y + 13);
-
-    // Tier 1: Diffuse ambient floor shadow
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.05, r * 0.62, 0.2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
-    ctx.fill();
-
-    // Tier 2: Core contact shadow
-    ctx.beginPath();
-    ctx.ellipse(-2, -2, r * 0.78, r * 0.46, 0.2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
-    ctx.fill();
-    ctx.restore();
-
-    // 2. Transformed bomb entity
+    // Transformed bomb entity
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rotation);
 
-    // Blit pre-rasterized static bomb sprite at logical dimensions
+    // Blit pre-rasterized static bomb sprite at logical dimensions with natural drop shadow
     const sprite = getCachedBombSprite(r);
     if (sprite) {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 6;
+
       ctx.drawImage(
         sprite,
         -BOMB_ORIGIN_X,
@@ -188,6 +176,9 @@ export class Bomb {
         BOMB_LOGICAL_SIZE,
         BOMB_LOGICAL_SIZE
       );
+
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
     } else {
       // Fallback
       ctx.beginPath();

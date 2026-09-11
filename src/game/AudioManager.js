@@ -305,18 +305,18 @@ export class AudioManager {
       let squelchFreq = 340;
       let squelchDecay = 0.10;
 
-      if (fruitType === 'apple' || fruitType === 'strawberry') {
-        baseCutFreq = 1350;
-        squelchFreq = 420;
-        squelchDecay = 0.07;
+      if (fruitType === 'apple' || fruitType === 'strawberry' || fruitType === 'kiwi') {
+        baseCutFreq = 1380;
+        squelchFreq = 440;
+        squelchDecay = 0.065;
       } else if (fruitType === 'coconut') {
         baseCutFreq = 880;
         squelchFreq = 260;
         squelchDecay = 0.12;
-      } else if (fruitType === 'banana') {
-        baseCutFreq = 980;
-        squelchFreq = 290;
-        squelchDecay = 0.09;
+      } else if (fruitType === 'banana' || fruitType === 'peach') {
+        baseCutFreq = 1040;
+        squelchFreq = 310;
+        squelchDecay = 0.10;
       } else if (fruitType === 'dragonfruit' || fruitType === 'pineapple') {
         baseCutFreq = 1220;
         squelchFreq = 380;
