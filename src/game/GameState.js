@@ -1,4 +1,5 @@
 import { GAME_MODES, GAME_MODE_CONFIGS, getGameModeConfig } from './GameModeConfig.js';
+import { ProgressionManager } from './ProgressionManager.js';
 import { lerp } from '../utils/math.js';
 
 export { GAME_MODES, GAME_MODE_CONFIGS, getGameModeConfig };
@@ -64,6 +65,7 @@ export class GameState {
     this.fruitsSliced = 0;
     this.nextLifeMilestone = this.modeConfig.lifeMilestoneInterval || 100;
     this.progression = this.loadProgression();
+    this.progressionManager = new ProgressionManager();
     this.powerUpManager = null;
 
     this.stateListeners = new Set();
@@ -75,6 +77,10 @@ export class GameState {
     this.lifeRecoveredListeners = new Set();
     this.timeListeners = new Set();
     this.modeListeners = new Set();
+  }
+
+  getProgressionManager() {
+    return this.progressionManager;
   }
 
   setPowerUpManager(powerUpManager) {
@@ -214,6 +220,10 @@ export class GameState {
     const oldState = this.currentState;
     this.currentState = newState;
 
+    if (newState === STATES.GAME_OVER && this.progressionManager) {
+      this.progressionManager.recordGameEnd(this.score);
+    }
+
     // Notify React or external subscribers only on state transition
     this.notifyStateListeners(newState, oldState);
   }
@@ -221,6 +231,9 @@ export class GameState {
   update(dt) {
     if (this.currentState === STATES.PLAYING) {
       this.sessionTime += dt;
+      if (this.progressionManager) {
+        this.progressionManager.updateSessionTime(dt);
+      }
     }
 
     // 1. Combo window countdown & expiration
@@ -265,6 +278,9 @@ export class GameState {
     this.score = newScore;
     if (this.score > this.bestScore) {
       this.saveBestScore(this.score, this.mode);
+    }
+    if (this.progressionManager) {
+      this.progressionManager.recordScore(this.score);
     }
     this.notifyScoreListeners(this.score, this.bestScore);
 
@@ -320,6 +336,9 @@ export class GameState {
     this.isFeverActive = true;
     this.feverTimer = this.feverDuration;
     this.recalculateComboMultiplier();
+    if (this.progressionManager) {
+      this.progressionManager.recordFever();
+    }
     this.notifyFeverListeners(true, {
       timer: this.feverTimer,
       duration: this.feverDuration,
@@ -348,6 +367,9 @@ export class GameState {
     }
     this.comboTimer = this.getEffectiveComboTimeout();
     this.recalculateComboMultiplier();
+    if (this.progressionManager) {
+      this.progressionManager.recordCombo(combo);
+    }
     this.notifyComboListeners(this.combo, {
       consecutiveSlices: this.consecutiveSlices,
       multiplier: this.comboMultiplier,
@@ -442,6 +464,15 @@ export class GameState {
       this.progression.highestCombo = this.consecutiveSlices;
     }
     this.saveProgression();
+
+    if (this.progressionManager) {
+      this.progressionManager.recordSlice(fruitType, {
+        ...metadata,
+        isPerfectSlice,
+        multiSliceCount,
+      });
+      this.progressionManager.recordCombo(this.consecutiveSlices);
+    }
 
     this.notifyComboListeners(this.combo, {
       consecutiveSlices: this.consecutiveSlices,
@@ -631,6 +662,10 @@ export class GameState {
     this.timeRemaining = typeof this.modeConfig.timer === 'number' ? this.modeConfig.timer : null;
     this.progression.gamesPlayed += 1;
     this.saveProgression();
+
+    if (this.progressionManager) {
+      this.progressionManager.startSession();
+    }
 
     this.notifyScoreListeners(this.score, this.bestScore);
     this.notifyComboListeners(0, {
@@ -823,6 +858,9 @@ export class GameState {
   }
 
   destroy() {
+    if (this.progressionManager && typeof this.progressionManager.destroy === 'function') {
+      this.progressionManager.destroy();
+    }
     this.stateListeners.clear();
     this.scoreListeners.clear();
     this.comboListeners.clear();

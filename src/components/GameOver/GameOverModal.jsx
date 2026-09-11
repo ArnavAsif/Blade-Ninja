@@ -1,5 +1,7 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import gsap from 'gsap';
+import { ProgressionModal } from '../Progression/ProgressionModal.jsx';
+import { CrestIcon } from '../Progression/ProgressionIcons.jsx';
 import styles from './GameOverModal.module.css';
 
 export function GameOverModal({
@@ -10,6 +12,7 @@ export function GameOverModal({
   livesRecovered = 0,
   modeName = 'Classic',
   audioManager = null,
+  progressionManager = null,
   onRestart,
   onMenu,
 }) {
@@ -17,6 +20,8 @@ export function GameOverModal({
   const modalRef = useRef(null);
   const statsRef = useRef(null);
   const actionsRef = useRef(null);
+
+  const [isProgressionOpen, setIsProgressionOpen] = useState(false);
 
   const isNewHighScore = score > 0 && score >= bestScore;
 
@@ -130,6 +135,15 @@ export function GameOverModal({
               <span className={styles.statValue}>{livesRecovered}</span>
             </div>
           )}
+          {progressionManager && (
+            <div className={styles.statItem}>
+              <span className={styles.statLabel}>Blade Crests</span>
+              <span className={`${styles.statValue} ${styles.statValueCrest}`}>
+                <CrestIcon size={18} />
+                <span>{progressionManager.getCurrency()}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         <div ref={actionsRef} className={styles.actions}>
@@ -142,6 +156,20 @@ export function GameOverModal({
           >
             Play Again
           </button>
+          {progressionManager && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                if (audioManager) audioManager.playMenuTransition();
+                setIsProgressionOpen(true);
+              }}
+              onMouseEnter={() => audioManager?.playButtonHover()}
+              aria-label="View Missions and Progression"
+            >
+              Missions & Career
+            </button>
+          )}
           <button
             type="button"
             className={styles.secondaryButton}
@@ -153,6 +181,14 @@ export function GameOverModal({
           </button>
         </div>
       </div>
+
+      {/* Progression & Missions Modal */}
+      <ProgressionModal
+        isOpen={isProgressionOpen}
+        onClose={() => setIsProgressionOpen(false)}
+        progressionManager={progressionManager}
+        audioManager={audioManager}
+      />
     </div>
   );
 }

@@ -353,6 +353,7 @@ export function GameUI({ gameState, engine }) {
           livesRecovered={gameState ? (gameState.getProgression()?.totalLivesRecovered || 0) : 0}
           modeName={gameState ? gameState.getModeConfig().name : 'Classic'}
           audioManager={engine ? engine.audioManager : null}
+          progressionManager={gameState ? gameState.getProgressionManager() : null}
           onRestart={handleRestart}
           onMenu={handleMainMenu}
         />

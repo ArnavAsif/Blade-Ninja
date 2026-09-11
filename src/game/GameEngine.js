@@ -440,7 +440,10 @@ export class GameEngine {
             }
 
             // 1. Scoring update with full arcade metadata (perfect slice & multi-slice chain)
-            const result = this.gameState.registerSlice(fruit.type, hitMetadata);
+            const result = this.gameState.registerSlice(fruit.type, {
+              ...hitMetadata,
+              isRecoveryFruit: Boolean(fruit.isRecoveryFruit),
+            });
 
             // 2. Play layered authentic slice audio with fruit-specific timbre
             this.audioManager.playFruitSlice(fruit.type, result.combo);
@@ -532,6 +535,11 @@ export class GameEngine {
 
             // 2. Activate power-up
             this.powerUpManager.activate(powerUp.type);
+
+            // Record power-up slice for progression missions
+            if (this.gameState && typeof this.gameState.getProgressionManager === 'function') {
+              this.gameState.getProgressionManager().recordSlice(powerUp.type, { isPowerUp: true });
+            }
 
             // 3. If Life Restore: instant life recovery or bonus score
             if (powerUp.type === POWER_UP_TYPES.LIFE_RESTORE) {

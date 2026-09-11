@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import gsap from 'gsap';
 import { GAME_MODES, MODE_CONFIG } from '../../game/GameState.js';
 import { SettingsModal } from '../Settings/SettingsModal.jsx';
+import { ProgressionModal } from '../Progression/ProgressionModal.jsx';
+import { CrestIcon } from '../Progression/ProgressionIcons.jsx';
 import styles from './MainMenu.module.css';
 
 export function MainMenu({
@@ -25,7 +27,28 @@ export function MainMenu({
     gameState ? gameState.mode : GAME_MODES.CLASSIC
   );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProgressionOpen, setIsProgressionOpen] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+
+  const progressionManager = gameState && typeof gameState.getProgressionManager === 'function'
+    ? gameState.getProgressionManager()
+    : null;
+
+  const [progressionData, setProgressionData] = useState(() => ({
+    currency: progressionManager ? progressionManager.getCurrency() : 0,
+    unclaimedCount: progressionManager ? progressionManager.getUnclaimedCount() : 0,
+  }));
+
+  useEffect(() => {
+    if (!progressionManager) return;
+    const unsubscribe = progressionManager.subscribe((latest) => {
+      setProgressionData({
+        currency: latest.currency,
+        unclaimedCount: latest.unclaimedCount,
+      });
+    });
+    return unsubscribe;
+  }, [progressionManager]);
 
   // Derive mode high score directly without cascading re-renders
   const modeBestScore = gameState ? gameState.loadBestScore(selectedMode) : bestScore;
@@ -173,6 +196,21 @@ export function MainMenu({
           <div className={styles.badgeRow}>
             <span className={styles.arcadeBadge}>Arcade Edition</span>
             <span className={styles.versionBadge}>v2.0</span>
+            <button
+              type="button"
+              className={styles.currencyPill}
+              onClick={() => {
+                if (audioManager) audioManager.playMenuTransition();
+                setIsProgressionOpen(true);
+              }}
+              onMouseEnter={() => audioManager?.playButtonHover()}
+              title="Blade Crests - View Missions & Career"
+              aria-label={`Blade Crests: ${progressionData.currency}. Click to view missions`}
+            >
+              <CrestIcon size={14} />
+              <span className={styles.currencyValue}>{progressionData.currency}</span>
+              <span className={styles.currencyLabel}>Crests</span>
+            </button>
           </div>
 
           <h1 className={styles.title}>
@@ -245,6 +283,27 @@ export function MainMenu({
 
           <button
             type="button"
+            className={styles.missionsButton}
+            onClick={() => {
+              if (audioManager) audioManager.playMenuTransition();
+              setIsProgressionOpen(true);
+            }}
+            onMouseEnter={() => audioManager?.playButtonHover()}
+            aria-label="Open Missions and Dojo Career"
+          >
+            <div className={styles.missionsBtnInner}>
+              <svg viewBox="0 0 24 24" className={styles.missionsIcon} fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              <span className={styles.missionsButtonText}>Missions & Career</span>
+            </div>
+            {progressionData.unclaimedCount > 0 && (
+              <span className={styles.missionsBadge}>{progressionData.unclaimedCount}</span>
+            )}
+          </button>
+
+          <button
+            type="button"
             className={styles.settingsTriggerButton}
             onClick={() => {
               if (audioManager) audioManager.playMenuTransition();
@@ -276,6 +335,14 @@ export function MainMenu({
         onToggleSound={onToggleSound}
         onToggleMusic={onToggleMusic}
         onVolumeChange={onVolumeChange}
+      />
+
+      {/* Progression Modal */}
+      <ProgressionModal
+        isOpen={isProgressionOpen}
+        onClose={() => setIsProgressionOpen(false)}
+        progressionManager={progressionManager}
+        audioManager={audioManager}
       />
     </div>
   );

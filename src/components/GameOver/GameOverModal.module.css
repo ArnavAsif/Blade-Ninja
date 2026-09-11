@@ -99,6 +99,14 @@
   color: var(--accent-cyan);
 }
 
+.statValueCrest {
+  color: #FBBF24;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 .actions {
   display: flex;
   flex-direction: column;

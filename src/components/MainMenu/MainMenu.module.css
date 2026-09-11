@@ -72,6 +72,45 @@
   font-family: var(--font-family-mono);
 }
 
+.currencyPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  color: #FBBF24;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.currencyPill:hover {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(245, 158, 11, 0.6);
+  transform: translateY(-1px);
+}
+
+.currencyPill:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 2px;
+}
+
+.currencyValue {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  font-weight: 800;
+  color: #FBBF24;
+}
+
+.currencyLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .title {
   font-size: clamp(48px, 9vw, 84px);
   font-weight: 900;
@@ -290,6 +329,68 @@
 .playArrowIcon {
   width: 14px;
   height: 14px;
+}
+
+.missionsButton {
+  width: 100%;
+  padding: 12px 18px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-height: 44px;
+}
+
+.missionsButton:hover {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  border-color: rgba(245, 158, 11, 0.4);
+  transform: translateY(-1px);
+}
+
+.missionsButton:active {
+  transform: translateY(1px);
+}
+
+.missionsButton:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 2px;
+}
+
+.missionsBtnInner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.missionsIcon {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-amber);
+}
+
+.missionsButtonText {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.missionsBadge {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 9999px;
+  padding: 1px 7px;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+  font-family: var(--font-family-mono);
 }
 
 .settingsTriggerButton {
