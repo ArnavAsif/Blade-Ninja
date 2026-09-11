@@ -10,12 +10,18 @@ class TrailPoint {
     this.x = 0;
     this.y = 0;
     this.time = 0;
+    this.speed = 0;
+    this.vx = 0;
+    this.vy = 0;
   }
 
-  set(x, y, time) {
+  set(x, y, time, speed = 0, vx = 0, vy = 0) {
     this.x = x;
     this.y = y;
     this.time = time;
+    this.speed = speed;
+    this.vx = vx;
+    this.vy = vy;
   }
 }
 
@@ -27,15 +33,16 @@ export class InputManager {
 
     this.currentPos = { x: 0, y: 0 };
     this.previousPos = { x: 0, y: 0 };
+    this.smoothedSpeed = 0;
 
     // Point memory pool to eliminate garbage collection during rapid swiping
-    this.maxTrailPoints = 36;
-    this.trailDurationMs = 180; // Lifetime of trail points in ms
-    this.minDistanceThresholdSq = 3 * 3; // Minimum squared pixel movement to add point
+    this.maxTrailPoints = 48;
+    this.trailDurationMs = 190; // Lifetime of trail points in ms
+    this.minDistanceThresholdSq = 2.5 * 2.5; // Fine sub-pixel movement threshold
     this.minSliceSpeed = 120; // Minimum px/s to register an active slice cut
 
     this.pointPool = [];
-    for (let i = 0; i < this.maxTrailPoints + 10; i++) {
+    for (let i = 0; i < this.maxTrailPoints + 15; i++) {
       this.pointPool.push(new TrailPoint());
     }
 
@@ -43,7 +50,7 @@ export class InputManager {
 
     // Pre-allocated segment objects to eliminate GC in cutting detection
     this.reusableCutSegment = { p1: null, p2: null, speed: 0 };
-    this.segmentPool = Array.from({ length: 8 }, () => ({ p1: null, p2: null, speed: 0 }));
+    this.segmentPool = Array.from({ length: 12 }, () => ({ p1: null, p2: null, speed: 0 }));
     this.activeSegments = [];
 
     // Bound event listeners
@@ -54,6 +61,17 @@ export class InputManager {
     this.onContextMenu = (e) => e.preventDefault();
     this.onLostPointerCapture = this.handleLostPointerCapture.bind(this);
 
+    // Explicit mobile touch navigation and zoom lock
+    this.onTouchStart = (e) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    this.onTouchMove = (e) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    this.onGestureStart = (e) => {
+      if (e.cancelable) e.preventDefault();
+    };
+
     this.attach();
   }
 
@@ -63,11 +81,14 @@ export class InputManager {
     this.canvas.addEventListener('pointerdown', this.onPointerDown, { passive: false });
     this.canvas.addEventListener('lostpointercapture', this.onLostPointerCapture);
     this.canvas.addEventListener('contextmenu', this.onContextMenu);
+    this.canvas.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    this.canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
 
     if (typeof window !== 'undefined') {
       window.addEventListener('pointermove', this.onPointerMove, { passive: false });
       window.addEventListener('pointerup', this.onPointerUp, { passive: false });
       window.addEventListener('pointercancel', this.onPointerCancel, { passive: false });
+      window.addEventListener('gesturestart', this.onGestureStart, { passive: false });
     }
   }
 
@@ -76,6 +97,8 @@ export class InputManager {
       this.canvas.removeEventListener('pointerdown', this.onPointerDown);
       this.canvas.removeEventListener('lostpointercapture', this.onLostPointerCapture);
       this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+      this.canvas.removeEventListener('touchstart', this.onTouchStart);
+      this.canvas.removeEventListener('touchmove', this.onTouchMove);
       try {
         if (this.pointerId !== null && this.canvas.hasPointerCapture(this.pointerId)) {
           this.canvas.releasePointerCapture(this.pointerId);
@@ -88,6 +111,7 @@ export class InputManager {
       window.removeEventListener('pointermove', this.onPointerMove);
       window.removeEventListener('pointerup', this.onPointerUp);
       window.removeEventListener('pointercancel', this.onPointerCancel);
+      window.removeEventListener('gesturestart', this.onGestureStart);
     }
   }
 
@@ -99,7 +123,7 @@ export class InputManager {
     };
   }
 
-  obtainPoint(x, y, time) {
+  obtainPoint(x, y, time, speed = 0, vx = 0, vy = 0) {
     let pt;
     if (this.pointPool.length > 0) {
       pt = this.pointPool.pop();
@@ -109,12 +133,12 @@ export class InputManager {
       pt = new TrailPoint();
     }
 
-    pt.set(x, y, time);
+    pt.set(x, y, time, speed, vx, vy);
     return pt;
   }
 
   releasePoint(pt) {
-    if (this.pointPool.length < this.maxTrailPoints + 15) {
+    if (this.pointPool.length < this.maxTrailPoints + 20) {
       this.pointPool.push(pt);
     }
   }
@@ -129,6 +153,7 @@ export class InputManager {
 
     this.isDown = true;
     this.pointerId = e.pointerId;
+    this.smoothedSpeed = 0;
 
     try {
       this.canvas.setPointerCapture(e.pointerId);
@@ -149,7 +174,7 @@ export class InputManager {
       this.releasePoint(this.activePoints.pop());
     }
 
-    this.activePoints.push(this.obtainPoint(coords.x, coords.y, now));
+    this.activePoints.push(this.obtainPoint(coords.x, coords.y, now, 0, 0, 0));
   }
 
   handlePointerMove(e) {
@@ -186,12 +211,36 @@ export class InputManager {
       this.currentPos.x = coords.x;
       this.currentPos.y = coords.y;
 
+      let instantSpeed = 0;
+      let vx = 0;
+      let vy = 0;
+      if (this.activePoints.length > 0) {
+        const last = this.activePoints[this.activePoints.length - 1];
+        const dt = (now - last.time) / 1000;
+        if (dt > 0.001) {
+          const dx = coords.x - last.x;
+          const dy = coords.y - last.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          instantSpeed = dist / dt;
+          vx = dx / dt;
+          vy = dy / dt;
+        } else {
+          instantSpeed = last.speed;
+          vx = last.vx;
+          vy = last.vy;
+        }
+      }
+
+      this.smoothedSpeed = this.smoothedSpeed > 0
+        ? this.smoothedSpeed * 0.35 + instantSpeed * 0.65
+        : instantSpeed;
+
       if (this.activePoints.length >= this.maxTrailPoints) {
         const oldest = this.activePoints.shift();
         this.releasePoint(oldest);
       }
 
-      this.activePoints.push(this.obtainPoint(coords.x, coords.y, now));
+      this.activePoints.push(this.obtainPoint(coords.x, coords.y, now, this.smoothedSpeed, vx, vy));
     }
   }
 
@@ -245,6 +294,7 @@ export class InputManager {
     if (!this.isDown && this.activePoints.length === 0) {
       this.previousPos.x = this.currentPos.x;
       this.previousPos.y = this.currentPos.y;
+      this.smoothedSpeed = 0;
     }
   }
 
@@ -256,6 +306,10 @@ export class InputManager {
    * Returns current active swipe speed (pixels/second) across recent points.
    */
   getSwipeSpeed() {
+    if (this.smoothedSpeed > 0) {
+      return this.smoothedSpeed;
+    }
+
     const pts = this.activePoints;
     if (pts.length < 2) return 0;
 
@@ -340,6 +394,7 @@ export class InputManager {
   reset() {
     this.isDown = false;
     this.pointerId = null;
+    this.smoothedSpeed = 0;
     while (this.activePoints.length > 0) {
       this.releasePoint(this.activePoints.pop());
     }

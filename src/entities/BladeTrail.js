@@ -1,176 +1,481 @@
 /**
- * High-performance BladeTrail rendering engine.
- * Features midpoint quadratic Bézier curve interpolation, natural age-based
- * opacity falloff, continuous multi-pass width tapering, and blade tip gleam.
+ * Premium arcade-quality BladeTrail rendering engine.
+ *
+ * Implements:
+ * - Centripetal Catmull-Rom spline interpolation for silky-smooth curves
+ * - Continuous variable thickness with aerodynamic teardrop contour
+ * - Razor-fine tapered needle tail (0-width falloff)
+ * - Layered high-DPI rendering: soft cyan aura, luminous energy ribbon, pure white core
+ * - Dynamic velocity-driven modulation (width, alpha, star glint, and spark emissions)
+ * - Micro blade gleam spark particles with zero heap allocation pooling
  */
+
+const MAX_SAMPLES = 96;
 
 export class BladeTrail {
   constructor(inputManager) {
     this.inputManager = inputManager;
+    this.lastTime = 0;
 
-    // Palette: Crisp diamond white core with electric cyan aura
-    this.coreColor = 'rgba(255, 255, 255, ';
-    this.midGlowColor = 'rgba(56, 189, 248, ';
-    this.outerAuraColor = 'rgba(14, 165, 233, ';
+    // Pre-allocated typed arrays for zero-allocation spline evaluation
+    this.samplesX = new Float32Array(MAX_SAMPLES);
+    this.samplesY = new Float32Array(MAX_SAMPLES);
+    this.samplesTime = new Float32Array(MAX_SAMPLES);
+    this.samplesSpeed = new Float32Array(MAX_SAMPLES);
+    this.samplesNx = new Float32Array(MAX_SAMPLES);
+    this.samplesNy = new Float32Array(MAX_SAMPLES);
+    this.samplesWidth = new Float32Array(MAX_SAMPLES);
+    this.samplesAlpha = new Float32Array(MAX_SAMPLES);
+    this.leftX = new Float32Array(MAX_SAMPLES);
+    this.leftY = new Float32Array(MAX_SAMPLES);
+    this.rightX = new Float32Array(MAX_SAMPLES);
+    this.rightY = new Float32Array(MAX_SAMPLES);
+    this.sampleCount = 0;
 
-    this.maxCoreWidth = 3.6;
-    this.maxMidWidth = 8.5;
-    this.maxAuraWidth = 16.0;
+    // Micro spark particle pool for high-velocity slashes
+    this.maxSparks = 20;
+    this.sparks = Array.from({ length: this.maxSparks }, () => ({
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      life: 0,
+      maxLife: 0.12,
+      size: 1.5,
+      active: false,
+    }));
   }
 
   update(now = performance.now()) {
+    const dt = this.lastTime ? Math.min(0.05, Math.max(0.001, (now - this.lastTime) / 1000)) : 0.016;
+    this.lastTime = now;
+
     this.inputManager.update(now);
+
+    // 1. Update micro gleam sparks
+    for (let i = 0; i < this.maxSparks; i++) {
+      const spark = this.sparks[i];
+      if (!spark.active) continue;
+
+      spark.life += dt;
+      if (spark.life >= spark.maxLife) {
+        spark.active = false;
+        continue;
+      }
+      spark.x += spark.vx * dt;
+      spark.y += spark.vy * dt;
+    }
+
+    // 2. Emit subtle blade gleam sparks during high-velocity swipes
+    if (this.inputManager.isDown) {
+      const speed = this.inputManager.getSwipeSpeed();
+      if (speed > 550) {
+        const pts = this.inputManager.getTrailPoints();
+        if (pts.length >= 2) {
+          const tip = pts[pts.length - 1];
+          const prev = pts[pts.length - 2];
+          const angle = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+          this.spawnSpark(tip.x, tip.y, angle);
+        }
+      }
+    }
+  }
+
+  spawnSpark(x, y, swipeAngle) {
+    for (let i = 0; i < this.maxSparks; i++) {
+      const spark = this.sparks[i];
+      if (spark.active) continue;
+
+      const angle = swipeAngle + Math.PI + (Math.random() - 0.5) * 1.1;
+      const sparkSpeed = Math.random() * 85 + 35;
+
+      spark.x = x + (Math.random() - 0.5) * 4;
+      spark.y = y + (Math.random() - 0.5) * 4;
+      spark.vx = Math.cos(angle) * sparkSpeed;
+      spark.vy = Math.sin(angle) * sparkSpeed;
+      spark.life = 0;
+      spark.maxLife = 0.08 + Math.random() * 0.06;
+      spark.size = 1.2 + Math.random() * 1.4;
+      spark.active = true;
+      break;
+    }
   }
 
   reset() {
     this.inputManager.reset();
+    for (let i = 0; i < this.maxSparks; i++) {
+      this.sparks[i].active = false;
+    }
+    this.sampleCount = 0;
   }
 
   render(ctx) {
     const points = this.inputManager.getTrailPoints();
     const count = points.length;
-    if (count < 2) return;
+    if (count < 2) {
+      this.renderSparks(ctx);
+      return;
+    }
 
     const now = performance.now();
     const duration = this.inputManager.trailDurationMs;
+    const swipeSpeed = this.inputManager.getSwipeSpeed();
+    const speedFactor = Math.min(1.0, Math.max(0.0, (swipeSpeed - 120) / 850));
+
+    // 1. Evaluate Catmull-Rom spline interpolation
+    this.sampleCatmullRom(points, count);
+    if (this.sampleCount < 2) {
+      this.renderSparks(ctx);
+      return;
+    }
+
+    // 2. Compute smooth normal vectors and variable thickness boundaries
+    this.computeGeometry(now, duration, speedFactor);
 
     ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
 
-    // 1. Pass: Outer soft cyan aura
-    this.renderStrokePass(ctx, points, count, now, duration, (alpha, progress) => ({
-      width: Math.max(1, this.maxAuraWidth * progress * alpha),
-      style: `${this.outerAuraColor}${alpha * 0.28})`,
-    }));
+    // 3. Render Pass 1: Soft Luminous Cyan Aura
+    this.renderAura(ctx, speedFactor);
 
-    // 2. Pass: Vibrant electric cyan mid body
-    this.renderStrokePass(ctx, points, count, now, duration, (alpha, progress) => ({
-      width: Math.max(1, this.maxMidWidth * progress * alpha),
-      style: `${this.midGlowColor}${alpha * 0.65})`,
-    }));
+    // 4. Render Pass 2: Continuous Energy Blade Ribbon (Polygon Fill)
+    this.renderRibbon(ctx, speedFactor);
 
-    // 3. Pass: Razor-sharp pure white cutting blade core
-    this.renderStrokePass(ctx, points, count, now, duration, (alpha, progress) => ({
-      width: Math.max(0.8, this.maxCoreWidth * progress * Math.min(1, alpha * 1.2)),
-      style: `${this.coreColor}${alpha * 0.95})`,
-    }));
+    // 5. Render Pass 3: Razor-Sharp Diamond White Core Spine
+    this.renderCoreSpine(ctx, speedFactor);
 
-    // 4. Leading blade tip accent
-    if (this.inputManager.isDown && count >= 2) {
-      this.renderBladeTip(ctx, points[count - 1]);
+    // 6. Render Pass 4: Micro Blade Gleam Sparks
+    this.renderSparks(ctx);
+
+    // 7. Render Pass 5: Leading Blade Cutting Tip Glint & Star Flare
+    if (this.inputManager.isDown) {
+      const tipIdx = this.sampleCount - 1;
+      const prevIdx = Math.max(0, tipIdx - 1);
+      const dx = this.samplesX[tipIdx] - this.samplesX[prevIdx];
+      const dy = this.samplesY[tipIdx] - this.samplesY[prevIdx];
+      const angle = Math.atan2(dy, dx);
+      this.renderBladeTip(ctx, this.samplesX[tipIdx], this.samplesY[tipIdx], speedFactor, angle);
     }
 
     ctx.restore();
   }
 
   /**
-   * Smooth curve stroke pass with dynamic width and opacity tapering.
+   * Subdivides raw pointer events into a silky-smooth continuous Catmull-Rom curve.
    */
-  renderStrokePass(ctx, points, count, now, duration, styleResolver) {
-    if (count === 2) {
-      const p0 = points[0];
-      const p1 = points[1];
-      const age1 = Math.max(0, 1 - (now - p1.time) / duration);
-      if (age1 <= 0) return;
+  sampleCatmullRom(points, count) {
+    let outIdx = 0;
 
-      const { width, style } = styleResolver(age1, 1.0);
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.lineWidth = width;
-      ctx.strokeStyle = style;
-      ctx.stroke();
-      return;
+    for (let i = 0; i < count - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+
+      const p0 = i > 0 ? points[i - 1] : {
+        x: 2 * p1.x - p2.x,
+        y: 2 * p1.y - p2.y,
+        time: 2 * p1.time - p2.time,
+        speed: p1.speed || 0,
+      };
+
+      const p3 = i < count - 2 ? points[i + 2] : {
+        x: 2 * p2.x - p1.x,
+        y: 2 * p2.y - p1.y,
+        time: 2 * p2.time - p1.time,
+        speed: p2.speed || 0,
+      };
+
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      let steps = 1;
+      if (dist > 50) steps = 4;
+      else if (dist > 22) steps = 3;
+      else if (dist > 8) steps = 2;
+
+      for (let step = 0; step < steps; step++) {
+        if (outIdx >= MAX_SAMPLES - 1) break;
+
+        const t = step / steps;
+        const t2 = t * t;
+        const t3 = t2 * t;
+
+        const x = 0.5 * (
+          (2 * p1.x) +
+          (-p0.x + p2.x) * t +
+          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+        );
+
+        const y = 0.5 * (
+          (2 * p1.y) +
+          (-p0.y + p2.y) * t +
+          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+        );
+
+        const time = p1.time + t * (p2.time - p1.time);
+        const speed = (p1.speed || 0) + t * ((p2.speed || 0) - (p1.speed || 0));
+
+        this.samplesX[outIdx] = x;
+        this.samplesY[outIdx] = y;
+        this.samplesTime[outIdx] = time;
+        this.samplesSpeed[outIdx] = speed;
+        outIdx++;
+      }
     }
 
-    // Connect segments using midpoint quadratic Bézier curve interpolation
-    for (let i = 1; i < count; i++) {
-      const pPrev = points[i - 1];
-      const pCurr = points[i];
+    // Anchor exact final tip point to newest input position
+    if (outIdx < MAX_SAMPLES) {
+      const tip = points[count - 1];
+      this.samplesX[outIdx] = tip.x;
+      this.samplesY[outIdx] = tip.y;
+      this.samplesTime[outIdx] = tip.time;
+      this.samplesSpeed[outIdx] = tip.speed || 0;
+      outIdx++;
+    }
 
-      // Normalized progress along the blade trail (0.0 at tail, 1.0 at tip)
-      const progress = i / (count - 1);
-      const ageRatio = Math.max(0, 1 - (now - pCurr.time) / duration);
-      if (ageRatio <= 0) continue;
+    this.sampleCount = outIdx;
+  }
 
-      // Cubic taper profile for elegant organic teardrop tapering
-      const taper = Math.pow(progress, 0.75);
-      const alpha = ageRatio * taper;
-      if (alpha <= 0.01) continue;
+  /**
+   * Calculates continuous tangent normals and variable thickness bounds.
+   */
+  computeGeometry(now, duration, speedFactor) {
+    const total = this.sampleCount;
+    if (total < 2) return;
 
-      const { width, style } = styleResolver(alpha, taper);
+    // Peak ribbon half-width: sleek 2.4px on slow swipes up to 5.2px on fast swipes
+    const maxHalfWidth = 2.4 + 2.8 * speedFactor;
 
-      ctx.beginPath();
-      if (i === 1) {
-        ctx.moveTo(pPrev.x, pPrev.y);
-        const midX = (pPrev.x + pCurr.x) * 0.5;
-        const midY = (pPrev.y + pCurr.y) * 0.5;
-        ctx.lineTo(midX, midY);
+    for (let k = 0; k < total; k++) {
+      let dx;
+      let dy;
+
+      if (k === 0) {
+        dx = this.samplesX[1] - this.samplesX[0];
+        dy = this.samplesY[1] - this.samplesY[0];
+      } else if (k === total - 1) {
+        dx = this.samplesX[total - 1] - this.samplesX[total - 2];
+        dy = this.samplesY[total - 1] - this.samplesY[total - 2];
       } else {
-        const pPrevPrev = points[i - 2];
-        const midPrevX = (pPrevPrev.x + pPrev.x) * 0.5;
-        const midPrevY = (pPrevPrev.y + pPrev.y) * 0.5;
-        const midCurrX = (pPrev.x + pCurr.x) * 0.5;
-        const midCurrY = (pPrev.y + pCurr.y) * 0.5;
-
-        ctx.moveTo(midPrevX, midPrevY);
-        ctx.quadraticCurveTo(pPrev.x, pPrev.y, midCurrX, midCurrY);
+        dx = this.samplesX[k + 1] - this.samplesX[k - 1];
+        dy = this.samplesY[k + 1] - this.samplesY[k - 1];
       }
 
-      ctx.lineWidth = width;
-      ctx.strokeStyle = style;
-      ctx.stroke();
-    }
+      const len = Math.hypot(dx, dy);
+      const nx = len > 0.0001 ? -dy / len : 0;
+      const ny = len > 0.0001 ? dx / len : 1;
 
-    // Connect final segment cleanly to the exact tip point
-    const last = points[count - 1];
-    const secondLast = points[count - 2];
-    const midLastX = (secondLast.x + last.x) * 0.5;
-    const midLastY = (secondLast.y + last.y) * 0.5;
-    const tipAge = Math.max(0, 1 - (now - last.time) / duration);
+      this.samplesNx[k] = nx;
+      this.samplesNy[k] = ny;
 
-    if (tipAge > 0.05) {
-      const { width, style } = styleResolver(tipAge, 1.0);
-      ctx.beginPath();
-      ctx.moveTo(midLastX, midLastY);
-      ctx.lineTo(last.x, last.y);
-      ctx.lineWidth = width;
-      ctx.strokeStyle = style;
-      ctx.stroke();
+      // Normalized progress from tail (0.0) to tip (1.0)
+      const s = k / (total - 1);
+      const ageRatio = Math.max(0, 1.0 - (now - this.samplesTime[k]) / duration);
+
+      // Taper profile: needle-fine at tail (0.0), swells smoothly to peak around s=0.86,
+      // then tapers gracefully into a razor blade edge at the cutting tip
+      let taper = 0;
+      if (s <= 0.86) {
+        taper = Math.sin((s / 0.86) * (Math.PI * 0.5));
+        taper = Math.pow(taper, 1.35);
+      } else {
+        const tipProg = (s - 0.86) / 0.14;
+        taper = 1.0 - 0.62 * (tipProg * tipProg);
+      }
+
+      const ageFalloff = Math.pow(ageRatio, 1.15);
+      const combined = Math.max(0, Math.min(1.0, taper * ageFalloff));
+
+      const halfWidth = maxHalfWidth * combined;
+      this.samplesWidth[k] = halfWidth;
+      this.samplesAlpha[k] = combined;
+
+      this.leftX[k] = this.samplesX[k] + nx * halfWidth;
+      this.leftY[k] = this.samplesY[k] + ny * halfWidth;
+      this.rightX[k] = this.samplesX[k] - nx * halfWidth;
+      this.rightY[k] = this.samplesY[k] - ny * halfWidth;
     }
   }
 
   /**
-   * Renders a luminous blade cutting tip under the pointer cursor.
+   * Layer 1: Soft Outer Cyan Aura.
    */
-  renderBladeTip(ctx, tip) {
-    const speed = this.inputManager.getSwipeSpeed();
-    const speedFactor = Math.min(1.5, Math.max(0.6, speed / 400));
+  renderAura(ctx, speedFactor) {
+    const total = this.sampleCount;
+    if (total < 2) return;
 
-    // Outer cyan flare
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const auraWidth = 7.0 + 8.0 * speedFactor;
+    const auraAlpha = 0.18 + 0.22 * speedFactor;
+
+    if (speedFactor > 0.35) {
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.65)';
+      ctx.shadowBlur = 8 * speedFactor;
+    }
+
+    ctx.lineWidth = auraWidth;
+    ctx.strokeStyle = `rgba(14, 165, 233, ${auraAlpha})`;
+
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, 6.5 * speedFactor, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.4)';
+    ctx.moveTo(this.samplesX[0], this.samplesY[0]);
+
+    for (let k = 1; k < total - 1; k++) {
+      const midX = (this.samplesX[k] + this.samplesX[k + 1]) * 0.5;
+      const midY = (this.samplesY[k] + this.samplesY[k + 1]) * 0.5;
+      ctx.quadraticCurveTo(this.samplesX[k], this.samplesY[k], midX, midY);
+    }
+    ctx.lineTo(this.samplesX[total - 1], this.samplesY[total - 1]);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * Layer 2: Continuous Luminous Energy Blade Ribbon.
+   */
+  renderRibbon(ctx, speedFactor) {
+    const total = this.sampleCount;
+    if (total < 2) return;
+
+    ctx.save();
+    ctx.beginPath();
+
+    // Start at needle tail point
+    ctx.moveTo(this.samplesX[0], this.samplesY[0]);
+
+    // Trace left outer boundary forward to blade tip
+    for (let k = 1; k < total; k++) {
+      const prevX = this.leftX[k - 1];
+      const prevY = this.leftY[k - 1];
+      const currX = this.leftX[k];
+      const currY = this.leftY[k];
+      const midX = (prevX + currX) * 0.5;
+      const midY = (prevY + currY) * 0.5;
+      ctx.quadraticCurveTo(prevX, prevY, midX, midY);
+    }
+    ctx.lineTo(this.leftX[total - 1], this.leftY[total - 1]);
+    ctx.lineTo(this.samplesX[total - 1], this.samplesY[total - 1]);
+
+    // Trace right outer boundary backward to needle tail
+    ctx.lineTo(this.rightX[total - 1], this.rightY[total - 1]);
+    for (let k = total - 2; k >= 0; k--) {
+      const prevX = this.rightX[k + 1];
+      const prevY = this.rightY[k + 1];
+      const currX = this.rightX[k];
+      const currY = this.rightY[k];
+      const midX = (prevX + currX) * 0.5;
+      const midY = (prevY + currY) * 0.5;
+      ctx.quadraticCurveTo(prevX, prevY, midX, midY);
+    }
+    ctx.lineTo(this.samplesX[0], this.samplesY[0]);
+    ctx.closePath();
+
+    const fillAlpha = 0.55 + 0.38 * speedFactor;
+    ctx.fillStyle = `rgba(56, 189, 248, ${fillAlpha})`;
     ctx.fill();
 
-    // Sharp white core tip
+    ctx.restore();
+  }
+
+  /**
+   * Layer 3: Razor-Sharp Diamond White Cutting Spine.
+   */
+  renderCoreSpine(ctx, speedFactor) {
+    const total = this.sampleCount;
+    if (total < 2) return;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const coreWidth = 1.2 + 1.4 * speedFactor;
+    const coreAlpha = 0.88 + 0.12 * speedFactor;
+
+    ctx.lineWidth = coreWidth;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${coreAlpha})`;
+
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, 2.8 * speedFactor, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.moveTo(this.samplesX[0], this.samplesY[0]);
+
+    for (let k = 1; k < total - 1; k++) {
+      const midX = (this.samplesX[k] + this.samplesX[k + 1]) * 0.5;
+      const midY = (this.samplesY[k] + this.samplesY[k + 1]) * 0.5;
+      ctx.quadraticCurveTo(this.samplesX[k], this.samplesY[k], midX, midY);
+    }
+    ctx.lineTo(this.samplesX[total - 1], this.samplesY[total - 1]);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * Layer 4: Leading Blade Cutting Tip Glint & Star Flare.
+   */
+  renderBladeTip(ctx, x, y, speedFactor, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const baseRadius = 3.5 + 2.5 * speedFactor;
+
+    // 1. Soft glowing outer flare
+    ctx.beginPath();
+    ctx.arc(0, 0, baseRadius * 1.8, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(56, 189, 248, ${0.35 + 0.35 * speedFactor})`;
     ctx.fill();
 
-    // Diamond 4-point star flare glint on high-velocity cuts
-    if (speed > 450) {
-      const glintSize = 7.0 * speedFactor;
+    // 2. Razor white hot cutting core bead
+    ctx.beginPath();
+    ctx.arc(0, 0, baseRadius * 0.75, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+
+    // 3. Four-point diamond star flare aligned with cut direction
+    if (speedFactor > 0.25) {
+      ctx.rotate(angle);
+      const glintLength = 6.0 + 8.5 * speedFactor;
+      const glintWidth = 1.2 + 0.8 * speedFactor;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+
+      // Longitudinal blade flare beam
       ctx.beginPath();
-      ctx.moveTo(tip.x - glintSize, tip.y);
-      ctx.lineTo(tip.x + glintSize, tip.y);
-      ctx.moveTo(tip.x, tip.y - glintSize);
-      ctx.lineTo(tip.x, tip.y + glintSize);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
+      ctx.moveTo(-glintLength, 0);
+      ctx.quadraticCurveTo(0, 0, 0, glintWidth);
+      ctx.quadraticCurveTo(0, 0, glintLength, 0);
+      ctx.quadraticCurveTo(0, 0, 0, -glintWidth);
+      ctx.closePath();
+      ctx.fill();
+
+      // Transverse blade flare beam
+      const crossLength = glintLength * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(0, -crossLength);
+      ctx.quadraticCurveTo(0, 0, glintWidth * 0.8, 0);
+      ctx.quadraticCurveTo(0, 0, 0, crossLength);
+      ctx.quadraticCurveTo(0, 0, -glintWidth * 0.8, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Layer 5: Micro Blade Gleam Sparks.
+   */
+  renderSparks(ctx) {
+    for (let i = 0; i < this.maxSparks; i++) {
+      const spark = this.sparks[i];
+      if (!spark.active) continue;
+
+      const progress = spark.life / spark.maxLife;
+      const alpha = Math.max(0, 1.0 - progress);
+
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.88})`;
+      ctx.beginPath();
+      ctx.arc(spark.x, spark.y, spark.size * alpha, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 }
