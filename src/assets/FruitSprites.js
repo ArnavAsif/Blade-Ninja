@@ -248,14 +248,6 @@ function drawWatermelonHalf(ctx, isTop) {
     ctx.ellipse(seeds[i][0], seeds[i][1], 2.2, 3.8, ySign * 0.2, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  // Flat cut face highlight
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.82, 0);
-  ctx.lineTo(r * 0.82, 0);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
 }
 
 // -------------------------------------------------------------

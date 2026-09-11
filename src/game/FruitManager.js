@@ -494,14 +494,14 @@ export class FruitManager {
     }
 
     // Initial separation gap along cut normal to prevent frame 1 overlap
-    const initialGap = 8;
+    const initialGap = 4;
 
-    // Half 1 (top / left)
+    // Half 1 (top / left piece): dome is at y <= 0 in local frame (negative normal direction)
     this.slicedFruitPool.obtain(
-      fruit.x + nx * initialGap,
-      fruit.y + ny * initialGap,
-      fruit.vx + forwardVx + nx * sepSpeed,
-      fruit.vy + forwardVy + ny * sepSpeed - 35,
+      fruit.x - nx * initialGap,
+      fruit.y - ny * initialGap,
+      fruit.vx + forwardVx - nx * sepSpeed,
+      fruit.vy + forwardVy - ny * sepSpeed - 35,
       fruit.gravity,
       fruit.radius,
       sliceAngle,
@@ -510,12 +510,12 @@ export class FruitManager {
       -spinMagnitude + torqueBias
     );
 
-    // Half 2 (bottom / right)
+    // Half 2 (bottom / right piece): dome is at y >= 0 in local frame (positive normal direction)
     this.slicedFruitPool.obtain(
-      fruit.x - nx * initialGap,
-      fruit.y - ny * initialGap,
-      fruit.vx + forwardVx - nx * sepSpeed,
-      fruit.vy + forwardVy - ny * sepSpeed - 35,
+      fruit.x + nx * initialGap,
+      fruit.y + ny * initialGap,
+      fruit.vx + forwardVx + nx * sepSpeed,
+      fruit.vy + forwardVy + ny * sepSpeed - 35,
       fruit.gravity,
       fruit.radius,
       sliceAngle,

@@ -474,7 +474,8 @@ export class BladeTrail {
 
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.88})`;
       ctx.beginPath();
-      ctx.arc(spark.x, spark.y, spark.size * alpha, 0, Math.PI * 2);
+      const sparkR = Math.max(0.1, spark.size * alpha);
+      ctx.arc(spark.x, spark.y, sparkR, 0, Math.PI * 2);
       ctx.fill();
     }
   }

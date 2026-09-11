@@ -245,16 +245,20 @@ export class GameEngine {
   tick(timestamp) {
     if (!this.isRunning) return;
 
+    // Schedule next frame upfront so an unexpected exception never halts the animation loop
+    this.animationFrameId = requestAnimationFrame(this.loop);
+
     const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
     this.lastTime = timestamp;
 
-    if (!this.isPaused) {
-      this.update(dt);
+    try {
+      if (!this.isPaused) {
+        this.update(dt);
+      }
+      this.render();
+    } catch (err) {
+      console.error('Error during game tick execution:', err);
     }
-
-    this.render();
-
-    this.animationFrameId = requestAnimationFrame(this.loop);
   }
 
   update(dt) {
@@ -317,27 +321,32 @@ export class GameEngine {
               this.audioManager.playCombo(result.combo);
             }
 
-            // 3. Directional juice particles, pulp, impact star spark, and splash flash at exact hitPoint
+            // 3. Directional juice particles, pulp, fragments, sparkles, and splash flash
             this.particleManager.spawnSliceEffects(
               fruit.x,
               fruit.y,
               cutSegment,
               fruit.type,
               fruit.radius,
-              hitPoint
+              hitPoint,
+              { vx: fruit.vx, vy: fruit.vy },
+              result.combo
             );
 
             // 4. Floating canvas score / combo popup centered on slice contact
             const popupText = result.multiplier > 1
               ? `+${result.pointsEarned} (${result.combo}x)`
               : `+${result.pointsEarned}`;
-            const popupColor = result.multiplier >= 3 ? '#FBBF24' : '#F8FAFC';
+            const popupColor = result.multiplier >= 3
+              ? '#FBBF24'
+              : (result.multiplier === 2 ? '#38BDF8' : '#F8FAFC');
             const popupX = hitPoint ? hitPoint.x : fruit.x;
             const popupY = (hitPoint ? hitPoint.y : fruit.y) - 14;
-            this.particleManager.spawnScorePopup(popupX, popupY, popupText, popupColor);
+            this.particleManager.spawnScorePopup(popupX, popupY, popupText, popupColor, result.combo);
 
-            // 5. Crisp physical screen micro-jolt
-            this.screenShake = Math.min(this.screenShake + 3.2, 5.5);
+            // 5. Crisp physical screen micro-jolt with subtle combo scaling
+            const comboShakeBonus = Math.min(1.8, ((result.combo || 1) - 1) * 0.45);
+            this.screenShake = Math.min(this.screenShake + 3.0 + comboShakeBonus, 5.8);
           },
           (bomb, _cutSegment, hitPoint) => {
             // 1. Play synthesized sub-bass explosion

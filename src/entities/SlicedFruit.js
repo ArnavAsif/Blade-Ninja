@@ -12,6 +12,19 @@ import {
 
 export { FRUIT_TYPES, FRUIT_CONFIGS };
 
+const SPRITE_RADII = Object.freeze({
+  [FRUIT_TYPES.WATERMELON]: 54,
+  [FRUIT_TYPES.APPLE]: 48,
+  [FRUIT_TYPES.ORANGE]: 48,
+  [FRUIT_TYPES.BANANA]: 48,
+  [FRUIT_TYPES.PINEAPPLE]: 52,
+  [FRUIT_TYPES.STRAWBERRY]: 44,
+  [FRUIT_TYPES.DRAGON_FRUIT]: 50,
+  [FRUIT_TYPES.COCONUT]: 48,
+  [FRUIT_TYPES.KIWI]: 44,
+  [FRUIT_TYPES.PEACH]: 46,
+});
+
 export class SlicedFruit {
   constructor() {
     this.x = 0;
@@ -75,11 +88,12 @@ export class SlicedFruit {
     this.scale = 1.0 + 0.14 * Math.exp(-this.age * 9.5);
 
     // Natural smooth alpha fade as pieces fall toward bottom
-    const fadeStartY = screenHeight * 0.72;
+    const h = Math.max(100, screenHeight || 800);
+    const fadeStartY = h * 0.72;
     if (this.y > fadeStartY) {
-      const fadeDistance = screenHeight * 0.32;
+      const fadeDistance = Math.max(10, h * 0.32);
       this.alpha = Math.max(0, 1 - (this.y - fadeStartY) / fadeDistance);
-      if (this.alpha <= 0.01 || this.y > screenHeight + this.radius * 2 + 50) {
+      if (this.alpha <= 0.01 || this.y > h + this.radius * 2 + 50) {
         this.active = false;
       }
     } else {
@@ -99,9 +113,11 @@ export class SlicedFruit {
     const state = this.side === 'top' ? 'left' : 'right';
     const sprite = getFruitSprite(this.type, state);
 
-    if (sprite) {
-      const renderDiameter = this.radius * 2.25;
+    const baseR = SPRITE_RADII[this.type] || 48;
+    const renderDiameter = this.radius * 2.25;
+    const visualRadius = baseR * (renderDiameter / 160);
 
+    if (sprite) {
       // Natural directional drop shadow following the exact half-fruit silhouette
       ctx.shadowColor = 'rgba(0, 0, 0, 0.26)';
       ctx.shadowBlur = 8;
@@ -119,29 +135,50 @@ export class SlicedFruit {
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
 
+      // Cut-edge highlight masked to the exact sliced fruit geometry
+      ctx.save();
+      ctx.beginPath();
+      const start = this.side === 'top' ? Math.PI : 0;
+      const end = this.side === 'top' ? Math.PI * 2 : Math.PI;
+      ctx.arc(0, 0, visualRadius, start, end);
+      ctx.closePath();
+      ctx.clip();
+
       // 1. Fresh glistening cut-edge moisture sheen along the cleaved flat surface
       ctx.beginPath();
-      ctx.moveTo(-this.radius * 0.88, 0);
-      ctx.lineTo(this.radius * 0.88, 0);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
-      ctx.lineWidth = Math.max(1.5, this.radius * 0.05);
+      ctx.moveTo(-visualRadius, 0);
+      ctx.lineTo(visualRadius, 0);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = Math.max(1.8, visualRadius * 0.055);
+      ctx.lineCap = 'butt';
+      ctx.stroke();
+
+      // 2. Inner glistening moisture sheen band slightly inset from cut boundary
+      const sheenOffset = this.side === 'top' ? -1.0 : 1.0;
+      ctx.beginPath();
+      ctx.moveTo(-visualRadius * 0.85, sheenOffset);
+      ctx.lineTo(visualRadius * 0.85, sheenOffset);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.lineWidth = Math.max(1.0, visualRadius * 0.035);
       ctx.lineCap = 'round';
       ctx.stroke();
 
-      // 2. Glistening micro moisture beads along the flat cut line
+      // 3. Glistening micro moisture beads along the flat cut line
       ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
       ctx.beginPath();
-      ctx.arc(-this.radius * 0.42, 0, 1.8, 0, Math.PI * 2);
-      ctx.arc(this.radius * 0.12, 0, 1.4, 0, Math.PI * 2);
-      ctx.arc(this.radius * 0.52, 0, 1.6, 0, Math.PI * 2);
+      ctx.arc(-visualRadius * 0.42, 0, 1.6, 0, Math.PI * 2);
+      ctx.arc(visualRadius * 0.12, 0, 1.3, 0, Math.PI * 2);
+      ctx.arc(visualRadius * 0.52, 0, 1.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // 3. Crisp bevel highlight glints at outer entrance/exit corners
+      // 4. Crisp bevel highlight glints at outer entrance/exit corners
       ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
       ctx.beginPath();
-      ctx.arc(-this.radius * 0.82, 0, 2.0, 0, Math.PI * 2);
-      ctx.arc(this.radius * 0.82, 0, 2.0, 0, Math.PI * 2);
+      ctx.arc(-visualRadius * 0.86, 0, 1.8, 0, Math.PI * 2);
+      ctx.arc(visualRadius * 0.86, 0, 1.8, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.restore(); // Restores clip
     } else {
       // Fallback
       ctx.beginPath();
@@ -151,6 +188,22 @@ export class SlicedFruit {
       ctx.closePath();
       ctx.fillStyle = this.config.pulpColor || '#F43F5E';
       ctx.fill();
+
+      // Masked cut-edge highlight on fallback
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius, start, end);
+      ctx.closePath();
+      ctx.clip();
+
+      ctx.beginPath();
+      ctx.moveTo(-this.radius, 0);
+      ctx.lineTo(this.radius, 0);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = Math.max(1.8, this.radius * 0.06);
+      ctx.lineCap = 'butt';
+      ctx.stroke();
+      ctx.restore();
     }
 
     ctx.restore();

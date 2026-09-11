@@ -13,17 +13,43 @@ export class ParticleManager {
     this.pool = new ObjectPool(
       () => new Particle(),
       (particle, ...args) => particle.reset(...args),
-      240
+      300
     );
+
+    // Hard performance limits to guarantee constant 60 FPS
+    this.maxActiveLimit = 220;
+    this.frameSpawnBudget = 60;
+    this.spawnsThisFrame = 0;
+  }
+
+  obtainParticle(...args) {
+    if (
+      this.pool.getActiveCount() >= this.maxActiveLimit ||
+      this.spawnsThisFrame >= this.frameSpawnBudget
+    ) {
+      return null;
+    }
+    this.spawnsThisFrame++;
+    return this.pool.obtain(...args);
   }
 
   /**
-   * Spawns physical directional juice spray, pulp particles, micro-impact star spark,
-   * and slice splash flash when a fruit is cleaved by the blade.
+   * Spawns physical directional juice spray, pulp particles, rind fragments,
+   * sparkle glints, micro-impact star spark, and slice splash flash when a fruit is cleaved.
+   * Direction cleanly incorporates fruit movement velocity, blade swipe vector, and cut normal.
    */
-  spawnSliceEffects(x, y, cutSegment, fruitType, radius = 40, hitPoint = null) {
+  spawnSliceEffects(
+    x,
+    y,
+    cutSegment,
+    fruitType,
+    radius = 40,
+    hitPoint = null,
+    fruitVelocity = null,
+    combo = 1
+  ) {
     const config = FRUIT_CONFIGS[fruitType] || FRUIT_CONFIGS[FRUIT_TYPES.WATERMELON];
-    const { juiceColor, pulpColor, particleProfile } = config;
+    const { juiceColor, pulpColor, rindColor, particleProfile } = config;
     const profile = particleProfile || { droplets: 8, pulpCount: 5, splashScale: 1.0 };
 
     // Precise contact origin
@@ -36,19 +62,28 @@ export class ParticleManager {
     const len = Math.sqrt(dx * dx + dy * dy);
     const cutAngle = Math.atan2(dy, dx);
 
-    // Normal unit vectors
+    // Normal unit vectors (perpendicular cut blowout)
     const nx = len > 0 ? -dy / len : 0;
     const ny = len > 0 ? dx / len : 1;
     // Tangent unit vectors (blade swipe direction)
     const tx = len > 0 ? dx / len : 1;
     const ty = len > 0 ? dy / len : 0;
 
+    // Fruit inertia influence
+    const fvx = (fruitVelocity?.vx || 0) * 0.35;
+    const fvy = (fruitVelocity?.vy || 0) * 0.35;
+
     // Tangential forward momentum from blade swipe
     const swipeSpeed = cutSegment?.speed || 320;
     const forwardBias = Math.min(220, Math.max(60, swipeSpeed * 0.18));
+    const bladeVx = tx * forwardBias;
+    const bladeVy = ty * forwardBias;
+
+    // Controlled combo scaling (never excessive)
+    const comboScale = Math.min(1.4, 1.0 + (combo - 1) * 0.10);
 
     // 1. High-energy micro-impact flash star spark at exact contact point
-    this.pool.obtain(
+    this.obtainParticle(
       contactX,
       contactY,
       0,
@@ -63,7 +98,7 @@ export class ParticleManager {
 
     // 2. Slice Splash Flash (short-lived radiant line along cut, scaled by profile)
     const splashLength = radius * 2.2 * (profile.splashScale || 1.0);
-    this.pool.obtain(
+    this.obtainParticle(
       contactX,
       contactY,
       0,
@@ -71,28 +106,28 @@ export class ParticleManager {
       0,
       5.0,
       juiceColor,
-      0.12,
+      0.11,
       'splash_line',
       cutAngle,
       0,
       splashLength
     );
 
-    // 3. Directional Juice Droplets biased by blade swipe momentum
-    const dropletCount = profile.droplets || 8;
+    // 3. Directional Juice Droplets biased by fruit velocity and blade swipe momentum
+    const dropletCount = Math.round((profile.droplets || 8) * comboScale);
     for (let i = 0; i < dropletCount; i++) {
       const side = i % 2 === 0 ? 1 : -1;
-      const normalSpeed = side * randomRange(120, 300);
-      const tangentSpeed = forwardBias + randomRange(-50, 110);
+      const normalSpeed = side * randomRange(110, 290);
+      const tangentSpeed = forwardBias + randomRange(-45, 95);
 
-      const vx = nx * normalSpeed + tx * tangentSpeed;
-      const vy = ny * normalSpeed + ty * tangentSpeed - randomRange(30, 90);
+      const vx = fvx + nx * normalSpeed + tx * tangentSpeed;
+      const vy = fvy + ny * normalSpeed + ty * tangentSpeed - randomRange(25, 85);
 
-      const size = randomRange(2.2, 4.2);
-      const life = randomRange(0.28, 0.48);
+      const size = randomRange(2.0, 4.2);
+      const life = randomRange(0.24, 0.42);
       const color = Math.random() < 0.7 ? juiceColor : pulpColor;
 
-      this.pool.obtain(
+      this.obtainParticle(
         contactX + (Math.random() - 0.5) * 12,
         contactY + (Math.random() - 0.5) * 12,
         vx,
@@ -105,19 +140,37 @@ export class ParticleManager {
       );
     }
 
-    // 4. Fleshy Pulp Particles tailored to fruit variety
-    const pulpCount = profile.pulpCount || 5;
+    // 4. Focused High-Speed Micro-Mist Juice Spray (short burst along blade cut)
+    const mistCount = 4;
+    for (let i = 0; i < mistCount; i++) {
+      const angle = cutAngle + (i % 2 === 0 ? Math.PI / 2 : -Math.PI / 2) + (Math.random() - 0.5) * 0.45;
+      const speed = randomRange(160, 320);
+      this.obtainParticle(
+        contactX,
+        contactY,
+        fvx + Math.cos(angle) * speed + bladeVx * 0.4,
+        fvy + Math.sin(angle) * speed + bladeVy * 0.4,
+        520,
+        randomRange(1.2, 2.0),
+        juiceColor,
+        randomRange(0.14, 0.24),
+        'droplet'
+      );
+    }
+
+    // 5. Fleshy Pulp Particles tailored to fruit variety
+    const pulpCount = Math.round((profile.pulpCount || 5) * comboScale);
     for (let i = 0; i < pulpCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = randomRange(40, 150);
-      const vx = Math.cos(angle) * speed + tx * (forwardBias * 0.35);
-      const vy = Math.sin(angle) * speed + ty * (forwardBias * 0.35) - 20;
+      const speed = randomRange(40, 140);
+      const vx = fvx * 0.6 + Math.cos(angle) * speed + bladeVx * 0.35;
+      const vy = fvy * 0.6 + Math.sin(angle) * speed + bladeVy * 0.35 - 20;
 
       const size = randomRange(1.8, 2.8);
-      const life = randomRange(0.32, 0.52);
+      const life = randomRange(0.28, 0.46);
       const rotSpeed = (Math.random() - 0.5) * 6;
 
-      this.pool.obtain(
+      this.obtainParticle(
         contactX + (Math.random() - 0.5) * 16,
         contactY + (Math.random() - 0.5) * 16,
         vx,
@@ -132,20 +185,66 @@ export class ParticleManager {
       );
     }
 
-    // 5. Subtle Micro-Mist Juice Flecks (fast, fine, high-energy impact)
-    for (let i = 0; i < 4; i++) {
-      const angle = cutAngle + (i % 2 === 0 ? Math.PI / 2 : -Math.PI / 2) + (Math.random() - 0.5) * 0.5;
-      const speed = randomRange(180, 360);
-      this.pool.obtain(
+    // 6. Small Fruit Rind Fragments tumbling under gravity
+    const fragmentCount = 2;
+    for (let i = 0; i < fragmentCount; i++) {
+      const angle = cutAngle + (i === 0 ? Math.PI * 0.5 : -Math.PI * 0.5) + (Math.random() - 0.5) * 0.6;
+      const speed = randomRange(70, 180);
+      const vx = fvx * 0.5 + Math.cos(angle) * speed + bladeVx * 0.3;
+      const vy = fvy * 0.5 + Math.sin(angle) * speed + bladeVy * 0.3 - randomRange(30, 80);
+
+      this.obtainParticle(
+        contactX + (Math.random() - 0.5) * 10,
+        contactY + (Math.random() - 0.5) * 10,
+        vx,
+        vy,
+        750,
+        randomRange(2.6, 4.2),
+        rindColor || '#15803D',
+        randomRange(0.30, 0.46),
+        'fragment',
+        Math.random() * Math.PI,
+        (Math.random() - 0.5) * 8.5,
+        0,
+        '',
+        pulpColor
+      );
+    }
+
+    // 7. Sparkling Diamond Glints along cut line
+    const sparkleCount = combo >= 2 ? 3 : 2;
+    for (let i = 0; i < sparkleCount; i++) {
+      const offset = (Math.random() - 0.5) * radius * 1.2;
+      this.obtainParticle(
+        contactX + tx * offset,
+        contactY + ty * offset,
+        (Math.random() - 0.5) * 35,
+        (Math.random() - 0.5) * 35 - 20,
+        150,
+        randomRange(2.0, 3.4),
+        '#FFFFFF',
+        randomRange(0.18, 0.28),
+        'sparkle',
+        Math.random() * Math.PI,
+        (Math.random() - 0.5) * 4
+      );
+    }
+
+    // 8. High-Combo Shockwave Ring (combos >= 3)
+    if (combo >= 3) {
+      this.obtainParticle(
         contactX,
         contactY,
-        Math.cos(angle) * speed + tx * (forwardBias * 0.4),
-        Math.sin(angle) * speed + ty * (forwardBias * 0.4),
-        500,
-        randomRange(1.2, 2.2),
-        juiceColor,
-        randomRange(0.16, 0.26),
-        'droplet'
+        0,
+        0,
+        0,
+        radius * 0.4,
+        '#FBBF24',
+        0.20,
+        'combo_ring',
+        0,
+        0,
+        radius * 1.9
       );
     }
   }
@@ -156,7 +255,7 @@ export class ParticleManager {
    */
   spawnBombExplosion(x, y) {
     // 1. Expanding primary shockwave ring
-    this.pool.obtain(
+    this.obtainParticle(
       x,
       y,
       0,
@@ -172,7 +271,7 @@ export class ParticleManager {
     );
 
     // 2. Secondary high-energy core shockwave
-    this.pool.obtain(
+    this.obtainParticle(
       x,
       y,
       0,
@@ -199,7 +298,7 @@ export class ParticleManager {
       const color = emberColors[Math.floor(Math.random() * emberColors.length)];
       const life = randomRange(0.35, 0.65);
 
-      this.pool.obtain(
+      this.obtainParticle(
         x + (Math.random() - 0.5) * 8,
         y + (Math.random() - 0.5) * 8,
         vx,
@@ -224,7 +323,7 @@ export class ParticleManager {
       const color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
       const life = randomRange(0.48, 0.78);
 
-      this.pool.obtain(
+      this.obtainParticle(
         x + (Math.random() - 0.5) * 14,
         y + (Math.random() - 0.5) * 14,
         vx,
@@ -241,16 +340,21 @@ export class ParticleManager {
   /**
    * Spawns floating score or combo popups on Canvas.
    */
-  spawnScorePopup(x, y, text, color = '#F8FAFC') {
-    this.pool.obtain(
+  spawnScorePopup(x, y, text, color = '#F8FAFC', combo = 1) {
+    const isCombo = combo >= 2 || text.includes('x');
+    const popupLife = isCombo ? 0.70 : 0.60;
+    const riseSpeed = isCombo ? -105 : -90;
+    const size = isCombo ? 24 : 18;
+
+    this.obtainParticle(
       x,
       y,
       (Math.random() - 0.5) * 16,
-      -95,
+      riseSpeed,
       0,
-      18,
+      size,
       color,
-      0.65,
+      popupLife,
       'text',
       0,
       0,
@@ -263,7 +367,7 @@ export class ParticleManager {
    * Spawns a sleek red 'X' missed marker when a fruit drops unsliced.
    */
   spawnMissedMarker(x, y) {
-    this.pool.obtain(
+    this.obtainParticle(
       x,
       y,
       0,
@@ -281,6 +385,8 @@ export class ParticleManager {
   }
 
   update(dt) {
+    this.spawnsThisFrame = 0;
+
     const active = this.pool.getActiveItems();
     for (let i = active.length - 1; i >= 0; i--) {
       const particle = active[i];
@@ -301,5 +407,6 @@ export class ParticleManager {
 
   reset() {
     this.pool.releaseAll();
+    this.spawnsThisFrame = 0;
   }
 }

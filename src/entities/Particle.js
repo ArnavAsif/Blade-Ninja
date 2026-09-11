@@ -18,9 +18,10 @@ export class Particle {
     this.maxLife = 0.45;
     this.rotation = 0;
     this.rotationSpeed = 0;
-    this.type = 'droplet'; // 'droplet', 'pulp', 'splash_line', 'shockwave_ring', 'smoke_puff', 'fire_spark', 'text'
+    this.type = 'droplet'; // 'droplet', 'pulp', 'fragment', 'sparkle', 'combo_ring', 'splash_line', 'impact_spark', 'shockwave_ring', 'smoke_puff', 'fire_spark', 'text'
     this.length = 0;
     this.text = '';
+    this.secondaryColor = '';
     this.active = false;
   }
 
@@ -37,7 +38,8 @@ export class Particle {
     rotation = 0,
     rotationSpeed = 0,
     length = 0,
-    text = ''
+    text = '',
+    secondaryColor = ''
   ) {
     this.x = x;
     this.y = y;
@@ -54,6 +56,7 @@ export class Particle {
     this.rotationSpeed = rotationSpeed;
     this.length = length;
     this.text = text;
+    this.secondaryColor = secondaryColor;
     this.active = true;
   }
 
@@ -66,8 +69,14 @@ export class Particle {
       return;
     }
 
-    // Natural fluid air drag and gravity
-    if (this.type !== 'text') {
+    // Natural fluid air drag and gravity for physical airborne particles
+    if (
+      this.type !== 'text' &&
+      this.type !== 'splash_line' &&
+      this.type !== 'impact_spark' &&
+      this.type !== 'shockwave_ring' &&
+      this.type !== 'combo_ring'
+    ) {
       this.vx *= 0.982;
       this.vy = (this.vy + this.gravity * dt) * 0.985;
     }
@@ -89,26 +98,107 @@ export class Particle {
       ctx.fillStyle = this.color;
       ctx.beginPath();
       const angle = Math.atan2(this.vy, this.vx);
-      ctx.ellipse(this.x, this.y, this.size * 1.5, this.size * 0.85, angle, 0, Math.PI * 2);
+      const rx = Math.max(0.1, this.size * 1.5);
+      const ry = Math.max(0.1, this.size * 0.85);
+      ctx.ellipse(this.x, this.y, rx, ry, angle, 0, Math.PI * 2);
       ctx.fill();
 
       // Specular micro-glint on droplet surface for 3D liquid refraction
       if (this.size > 2.0) {
         ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha * 0.72})`;
         ctx.beginPath();
-        ctx.arc(this.x - this.size * 0.35, this.y - this.size * 0.35, this.size * 0.32, 0, Math.PI * 2);
+        const specR = Math.max(0.1, this.size * 0.32);
+        ctx.arc(this.x - this.size * 0.35, this.y - this.size * 0.35, specR, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (this.type === 'fragment') {
+      ctx.save();
+      ctx.globalAlpha = this.alpha;
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.rotation);
+      const s = this.size;
+
+      // Outer rind body
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.7, -s * 0.5);
+      ctx.lineTo(s * 0.8, -s * 0.3);
+      ctx.lineTo(s * 0.4, s * 0.8);
+      ctx.lineTo(-s * 0.6, s * 0.5);
+      ctx.closePath();
+      ctx.fill();
+
+      // Inner pulp accent on cleaved fragment
+      if (this.secondaryColor) {
+        ctx.fillStyle = this.secondaryColor;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.35, -s * 0.2);
+        ctx.lineTo(s * 0.5, -s * 0.1);
+        ctx.lineTo(s * 0.2, s * 0.4);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (this.type === 'sparkle') {
+      ctx.save();
+      ctx.globalAlpha = this.alpha;
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.rotation);
+
+      // Twinkling scale pulse
+      const progress = this.life / this.maxLife;
+      const pulse = Math.sin(progress * Math.PI);
+      const s = Math.max(0, this.size * pulse);
+      if (s <= 0.001) {
+        ctx.restore();
+        return;
+      }
+
+      ctx.fillStyle = this.color || '#FFFFFF';
+      ctx.beginPath();
+      ctx.moveTo(0, -s * 1.5);
+      ctx.quadraticCurveTo(0, 0, s * 0.3, 0);
+      ctx.quadraticCurveTo(0, 0, 0, s * 1.5);
+      ctx.quadraticCurveTo(0, 0, -s * 0.3, 0);
+      ctx.quadraticCurveTo(0, 0, 0, -s * 1.5);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-s * 1.5, 0);
+      ctx.quadraticCurveTo(0, 0, 0, s * 0.3);
+      ctx.quadraticCurveTo(0, 0, s * 1.5, 0);
+      ctx.quadraticCurveTo(0, 0, 0, -s * 0.3);
+      ctx.quadraticCurveTo(0, 0, -s * 1.5, 0);
+      ctx.fill();
+
+      // Central bright core bead
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(0.1, s * 0.35), 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    } else if (this.type === 'combo_ring') {
+      ctx.save();
+      ctx.globalAlpha = this.alpha;
+      const progress = this.life / this.maxLife;
+      const r = Math.max(0.1, this.size + (this.length - this.size) * Math.sqrt(progress));
+      ctx.strokeStyle = this.color;
+      ctx.lineWidth = Math.max(1, 3.5 * this.alpha);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     } else if (this.type === 'fire_spark') {
       ctx.globalAlpha = this.alpha;
       ctx.fillStyle = this.color;
       ctx.beginPath();
-      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.arc(this.x, this.y, Math.max(0.1, this.size), 0, Math.PI * 2);
       ctx.fill();
     } else if (this.type === 'shockwave_ring') {
       ctx.globalAlpha = this.alpha;
       const progress = this.life / this.maxLife;
-      const curRadius = this.size + (this.length - this.size) * progress;
+      const curRadius = Math.max(0.1, this.size + (this.length - this.size) * progress);
       ctx.strokeStyle = this.color;
       ctx.lineWidth = Math.max(1, 4 * this.alpha);
       ctx.beginPath();
@@ -117,7 +207,7 @@ export class Particle {
     } else if (this.type === 'smoke_puff') {
       ctx.globalAlpha = this.alpha;
       const progress = this.life / this.maxLife;
-      const curSize = this.size * (1 + progress * 1.6);
+      const curSize = Math.max(0.1, this.size * (1 + progress * 1.6));
       ctx.fillStyle = this.color;
       ctx.beginPath();
       ctx.arc(this.x, this.y, curSize, 0, Math.PI * 2);
@@ -162,7 +252,7 @@ export class Particle {
       ctx.translate(this.x, this.y);
       ctx.rotate(this.rotation);
 
-      const starSize = this.size * this.alpha;
+      const starSize = Math.max(0.1, this.size * this.alpha);
 
       // 1. High-energy radiant diamond flash
       ctx.fillStyle = this.color;
@@ -177,7 +267,7 @@ export class Particle {
       // 2. Pure white hot impact core
       ctx.fillStyle = '#FFFFFF';
       ctx.beginPath();
-      ctx.arc(0, 0, starSize * 0.32, 0, Math.PI * 2);
+      ctx.arc(0, 0, Math.max(0.1, starSize * 0.32), 0, Math.PI * 2);
       ctx.fill();
 
       ctx.restore();
@@ -185,13 +275,22 @@ export class Particle {
       ctx.save();
       ctx.globalAlpha = this.alpha;
       ctx.translate(this.x, this.y);
-      ctx.font = '800 22px "Rajdhani", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+      const isCombo = this.text.includes('x') || this.text.includes('COMBO');
+      const fontSize = isCombo ? 26 : 21;
+      ctx.font = `800 ${fontSize}px "Rajdhani", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round';
       ctx.miterLimit = 2;
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-      ctx.lineWidth = 4;
+
+      if (isCombo) {
+        ctx.shadowColor = 'rgba(251, 191, 36, 0.55)';
+        ctx.shadowBlur = 8;
+      }
+
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.88)';
+      ctx.lineWidth = isCombo ? 5 : 4;
       ctx.strokeText(this.text, 0, 0);
       ctx.fillStyle = this.color;
       ctx.fillText(this.text, 0, 0);

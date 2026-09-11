@@ -131,4 +131,99 @@ assert(avgDropletVx > 0, `Juice droplets spray forward along blade swipe directi
 partMgr.reset();
 assert(partMgr.pool.getActiveCount() === 0, 'Particle pool clean reset with 0 leaks');
 
+console.log('\n=== TEST 6: MULTI-ANGLE CUT EDGE & PHYSICAL SEPARATION ALIGNMENT ===');
+const angles = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI, (5 * Math.PI) / 4, (3 * Math.PI) / 2, (7 * Math.PI) / 4];
+
+for (const angle of angles) {
+  const fm = new FruitManager();
+  const f = fm.fruitPool.obtain(400, 300, 0, 0, 1000, FRUIT_TYPES.WATERMELON, 0, performance.now());
+
+  const dx = Math.cos(angle) * 200;
+  const dy = Math.sin(angle) * 200;
+  const cutSeg = {
+    p1: { x: 400 - dx * 0.5, y: 300 - dy * 0.5 },
+    p2: { x: 400 + dx * 0.5, y: 300 + dy * 0.5 },
+    speed: 750,
+  };
+
+  fm.sliceFruit(f, cutSeg, { x: 400, y: 300 });
+  const pieces = fm.slicedFruitPool.getActiveItems();
+  assert(pieces.length === 2, `Spawned 2 halves at angle ${(angle * 180 / Math.PI).toFixed(0)} deg`);
+
+  const topPiece = pieces.find(p => p.side === 'top');
+  const bottomPiece = pieces.find(p => p.side === 'bottom');
+  assert(Boolean(topPiece && bottomPiece), 'Both top and bottom pieces identified');
+
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  // topPiece must separate in -normal direction (matching its local negative Y dome)
+  const topDot = (topPiece.x - 400) * nx + (topPiece.y - 300) * ny;
+  assert(topDot < -0.1, `Top piece displaced in negative normal direction (dot: ${topDot.toFixed(2)})`);
+
+  // bottomPiece must separate in +normal direction (matching its local positive Y dome)
+  const bottomDot = (bottomPiece.x - 400) * nx + (bottomPiece.y - 300) * ny;
+  assert(bottomDot > 0.1, `Bottom piece displaced in positive normal direction (dot: ${bottomDot.toFixed(2)})`);
+
+  // Relative velocity must be separating outward along cut normal
+  const relVx = bottomPiece.vx - topPiece.vx;
+  const relVy = bottomPiece.vy - topPiece.vy;
+  const sepDot = relVx * nx + relVy * ny;
+  assert(sepDot > 100, `Halves separate outward along cut normal (sep speed: ${sepDot.toFixed(1)} px/s)`);
+}
+
+console.log('\n=== TEST 7: CUT-EDGE CLIPPING & BOUNDARY CONFINEMENT ===');
+const recordedCalls = [];
+const mockCtx = {
+  save() { recordedCalls.push({ method: 'save' }); },
+  restore() { recordedCalls.push({ method: 'restore' }); },
+  translate(x, y) { recordedCalls.push({ method: 'translate', x, y }); },
+  rotate(angle) { recordedCalls.push({ method: 'rotate', angle }); },
+  scale(x, y) { recordedCalls.push({ method: 'scale', x, y }); },
+  beginPath() { recordedCalls.push({ method: 'beginPath' }); },
+  closePath() { recordedCalls.push({ method: 'closePath' }); },
+  clip() { recordedCalls.push({ method: 'clip' }); },
+  moveTo(x, y) { recordedCalls.push({ method: 'moveTo', x, y }); },
+  lineTo(x, y) { recordedCalls.push({ method: 'lineTo', x, y }); },
+  arc(x, y, r, sa, ea) { recordedCalls.push({ method: 'arc', x, y, r, sa, ea }); },
+  stroke() { recordedCalls.push({ method: 'stroke' }); },
+  fill() { recordedCalls.push({ method: 'fill' }); },
+  drawImage() { recordedCalls.push({ method: 'drawImage' }); },
+};
+
+import { SlicedFruit } from '../src/entities/SlicedFruit.js';
+
+for (const type of Object.values(FRUIT_TYPES)) {
+  for (const side of ['top', 'bottom']) {
+    recordedCalls.length = 0;
+
+    const sf = new SlicedFruit();
+    sf.reset(300, 300, 10, -20, 1000, 40, Math.PI / 4, side, type);
+    sf.render(mockCtx);
+
+    // 1. Verify clip() is called to mask the highlight
+    const clipCall = recordedCalls.find(c => c.method === 'clip');
+    assert(clipCall !== undefined, `ctx.clip() called for fruit '${type}' side '${side}'`);
+
+    // 2. Verify cut-edge stroke was recorded inside the clipped scope
+    const clipIndex = recordedCalls.findIndex(c => c.method === 'clip');
+    const moveLines = recordedCalls.slice(clipIndex).filter(c => c.method === 'moveTo' || c.method === 'lineTo');
+    assert(moveLines.length >= 2, `Cut-edge line coordinates recorded inside clip for '${type}'`);
+
+    // 3. Verify line coordinates are aligned on cut face (y = 0 or slight inset)
+    const cutLineMoves = moveLines.filter(c => Math.abs(c.y) < 2.0);
+    assert(cutLineMoves.length >= 2, `Line coordinates stay exactly aligned to cut face y=0 for '${type}'`);
+
+    // 4. Verify all coordinates are finite numbers
+    for (const call of recordedCalls) {
+      for (const [key, val] of Object.entries(call)) {
+        if (typeof val === 'number') {
+          assert(Number.isFinite(val), `Finite parameter ${key}=${val} for '${type}'`);
+        }
+      }
+    }
+  }
+}
+
 console.log(`\nALL ${passed} SLICING SYSTEM UPGRADE TESTS PASSED!`);
