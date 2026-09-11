@@ -1,5 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import gsap from 'gsap';
+import {
+  BACKGROUND_LIST,
+  RANDOM_STAGE_ID,
+  DEFAULT_BACKGROUND_ID,
+} from '../../game/BackgroundConfig.js';
 import styles from './SettingsModal.module.css';
 
 export function SettingsModal({
@@ -10,14 +15,43 @@ export function SettingsModal({
   onToggleSound,
   onToggleMusic,
   onVolumeChange,
+  gameState = null,
+  selectedBackground = null,
+  onSelectBackground = null,
 }) {
   const overlayRef = useRef(null);
   const modalRef = useRef(null);
+
+  const [currentStage, setCurrentStage] = useState(() => {
+    if (gameState && typeof gameState.getSelectedBackground === 'function') {
+      return gameState.getSelectedBackground();
+    }
+    return selectedBackground || DEFAULT_BACKGROUND_ID;
+  });
+
+  useEffect(() => {
+    if (!gameState || typeof gameState.subscribeBackground !== 'function') return;
+    const unsubscribe = gameState.subscribeBackground((_active, selected) => {
+      setCurrentStage(selected);
+    });
+    return unsubscribe;
+  }, [gameState]);
 
   const handleClose = useCallback(() => {
     if (audioManager) audioManager.playButtonClick();
     onClose();
   }, [audioManager, onClose]);
+
+  const handleSelectStage = (stageId) => {
+    if (audioManager) audioManager.playButtonClick();
+    setCurrentStage(stageId);
+    if (gameState && typeof gameState.setBackground === 'function') {
+      gameState.setBackground(stageId);
+    }
+    if (onSelectBackground) {
+      onSelectBackground(stageId);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -89,7 +123,7 @@ export function SettingsModal({
           </button>
         </header>
 
-        <div className={styles.content}>
+        <div className={`${styles.content} ${styles.modalContentScroll}`}>
           {/* Volume Section */}
           <section className={styles.section}>
             <div className={styles.sectionHeader}>
@@ -168,6 +202,82 @@ export function SettingsModal({
                 </span>
               </button>
             )}
+          </section>
+
+          {/* Arcade Arena / Stage Selection */}
+          <section className={styles.stageSection}>
+            <div className={styles.sectionHeader}>
+              <div className={styles.sectionTitleRow}>
+                <svg viewBox="0 0 24 24" className={styles.sectionIcon} fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+                <span className={styles.sectionLabel}>Arcade Arena</span>
+              </div>
+            </div>
+
+            <div className={styles.stageGrid} role="radiogroup" aria-label="Arcade Arena Stage Selection">
+              {BACKGROUND_LIST.map((stage) => {
+                const isSelected = currentStage === stage.id;
+                return (
+                  <button
+                    key={stage.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    className={`${styles.stageCard} ${isSelected ? styles.stageCardActive : ''}`}
+                    onClick={() => handleSelectStage(stage.id)}
+                    onMouseEnter={() => audioManager?.playButtonHover()}
+                  >
+                    <div className={styles.stageThumbWrapper}>
+                      <img
+                        src={stage.image}
+                        alt={stage.name}
+                        className={styles.stageThumbImg}
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className={styles.stageCardBody}>
+                      <div className={styles.stageCardTitleRow}>
+                        <span className={styles.stageCardName}>{stage.name}</span>
+                        {isSelected && <span className={styles.stageBadgeActive}>Active</span>}
+                      </div>
+                      <span className={styles.stageCardTagline}>{stage.tagline}</span>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {/* Random Stage Option */}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={currentStage === RANDOM_STAGE_ID}
+                className={`${styles.stageCard} ${currentStage === RANDOM_STAGE_ID ? styles.stageCardActive : ''}`}
+                onClick={() => handleSelectStage(RANDOM_STAGE_ID)}
+                onMouseEnter={() => audioManager?.playButtonHover()}
+              >
+                <div className={styles.stageThumbWrapper}>
+                  <div className={styles.stageThumbRandom}>
+                    <svg viewBox="0 0 24 24" className={styles.stageThumbRandomSvg} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="16 3 21 3 21 8" />
+                      <line x1="4" y1="20" x2="21" y2="3" />
+                      <polyline points="21 16 21 21 16 21" />
+                      <line x1="15" y1="15" x2="21" y2="21" />
+                      <line x1="4" y1="4" x2="9" y2="9" />
+                    </svg>
+                  </div>
+                </div>
+                <div className={styles.stageCardBody}>
+                  <div className={styles.stageCardTitleRow}>
+                    <span className={styles.stageCardName}>Random Arena</span>
+                    {currentStage === RANDOM_STAGE_ID && <span className={styles.stageBadgeActive}>Active</span>}
+                  </div>
+                  <span className={styles.stageCardTagline}>Random stage per game</span>
+                </div>
+              </button>
+            </div>
           </section>
 
           {/* Quick Guide */}

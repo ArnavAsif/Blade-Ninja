@@ -367,6 +367,7 @@ export function GameUI({ gameState, engine, isPortrait = false }) {
             onToggleSound={handleToggleSound}
             onToggleMusic={handleToggleMusic}
             onVolumeChange={handleVolumeChange}
+            gameState={gameState}
           />
         </div>
       )}

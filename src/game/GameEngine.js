@@ -37,7 +37,19 @@ export class GameEngine {
     this.collisionManager = new CollisionManager();
     this.audioManager = new AudioManager();
     this.powerUpManager = new PowerUpManager();
-    this.environment = new ArcadeEnvironment();
+    const initialStage = this.gameState && typeof this.gameState.getActiveBackground === 'function'
+      ? this.gameState.getActiveBackground()
+      : undefined;
+    this.environment = new ArcadeEnvironment(initialStage);
+
+    // Synchronize active stage background with GameState
+    this.bgUnsubscribe = this.gameState && typeof this.gameState.subscribeBackground === 'function'
+      ? this.gameState.subscribeBackground((activeBg) => {
+          if (this.environment) {
+            this.environment.setBackground(activeBg);
+          }
+        })
+      : null;
 
     // Wire PowerUpManager with GameState, FruitManager, and audio callbacks
     this.powerUpManager.setGameState(this.gameState);
@@ -719,6 +731,10 @@ export class GameEngine {
     if (this.environment) {
       this.environment.destroy();
       this.environment = null;
+    }
+    if (this.bgUnsubscribe) {
+      this.bgUnsubscribe();
+      this.bgUnsubscribe = null;
     }
     if (this.modeUnsubscribe) {
       this.modeUnsubscribe();

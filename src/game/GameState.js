@@ -1,8 +1,15 @@
 import { GAME_MODES, GAME_MODE_CONFIGS, getGameModeConfig } from './GameModeConfig.js';
 import { ProgressionManager } from './ProgressionManager.js';
+import {
+  BACKGROUND_IDS,
+  RANDOM_STAGE_ID,
+  DEFAULT_BACKGROUND_ID,
+  getRandomBackgroundId,
+} from './BackgroundConfig.js';
 import { lerp } from '../utils/math.js';
 
 export { GAME_MODES, GAME_MODE_CONFIGS, getGameModeConfig };
+export { BACKGROUND_IDS, RANDOM_STAGE_ID, DEFAULT_BACKGROUND_ID };
 export const MODE_CONFIG = GAME_MODE_CONFIGS;
 
 export const STATES = Object.freeze({
@@ -37,6 +44,7 @@ export const SCORE_CONFIG = Object.freeze({
 
 const STORAGE_KEY_BEST_SCORE_PREFIX = 'blade_ninja_best_score';
 const STORAGE_KEY_PROGRESSION = 'blade_ninja_progression';
+const STORAGE_KEY_BACKGROUND = 'blade_ninja_selected_background';
 
 export class GameState {
   constructor() {
@@ -68,6 +76,11 @@ export class GameState {
     this.progressionManager = new ProgressionManager();
     this.powerUpManager = null;
 
+    this.selectedBackground = this.loadBackgroundPreference();
+    this.activeBackground = this.selectedBackground === RANDOM_STAGE_ID
+      ? getRandomBackgroundId()
+      : this.selectedBackground;
+
     this.stateListeners = new Set();
     this.scoreListeners = new Set();
     this.comboListeners = new Set();
@@ -77,6 +90,79 @@ export class GameState {
     this.lifeRecoveredListeners = new Set();
     this.timeListeners = new Set();
     this.modeListeners = new Set();
+    this.backgroundListeners = new Set();
+  }
+
+  loadBackgroundPreference() {
+    try {
+      const storage = (typeof window !== 'undefined' && window.localStorage)
+        ? window.localStorage
+        : (typeof localStorage !== 'undefined' ? localStorage : null);
+      if (!storage) {
+        return DEFAULT_BACKGROUND_ID;
+      }
+      const saved = storage.getItem(STORAGE_KEY_BACKGROUND);
+      if (!saved) return DEFAULT_BACKGROUND_ID;
+      if (saved === RANDOM_STAGE_ID || Object.values(BACKGROUND_IDS).includes(saved)) {
+        return saved;
+      }
+      return DEFAULT_BACKGROUND_ID;
+    } catch {
+      return DEFAULT_BACKGROUND_ID;
+    }
+  }
+
+  saveBackgroundPreference(stageId) {
+    try {
+      const storage = (typeof window !== 'undefined' && window.localStorage)
+        ? window.localStorage
+        : (typeof localStorage !== 'undefined' ? localStorage : null);
+      if (storage) {
+        storage.setItem(STORAGE_KEY_BACKGROUND, stageId);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }
+
+  getSelectedBackground() {
+    return this.selectedBackground;
+  }
+
+  getActiveBackground() {
+    return this.activeBackground;
+  }
+
+  setBackground(stageId) {
+    if (!stageId) return;
+    this.selectedBackground = stageId;
+    if (stageId === RANDOM_STAGE_ID) {
+      this.activeBackground = getRandomBackgroundId();
+    } else {
+      this.activeBackground = stageId;
+    }
+    this.saveBackgroundPreference(stageId);
+    this.notifyBackgroundListeners(this.activeBackground, this.selectedBackground);
+  }
+
+  subscribeBackground(listener) {
+    this.backgroundListeners.add(listener);
+    try {
+      listener(this.activeBackground, this.selectedBackground);
+    } catch (err) {
+      console.error('Error in initial GameState background listener call:', err);
+    }
+    return () => this.backgroundListeners.delete(listener);
+  }
+
+  notifyBackgroundListeners(activeBackground, selectedBackground) {
+    for (const listener of this.backgroundListeners) {
+      try {
+        listener(activeBackground, selectedBackground);
+      } catch (err) {
+        console.error('Error in GameState background listener:', err);
+      }
+    }
   }
 
   getProgressionManager() {
@@ -663,6 +749,12 @@ export class GameState {
     this.progression.gamesPlayed += 1;
     this.saveProgression();
 
+    // If player selected Random Arena, pick a fresh arena stage for the new session
+    if (this.selectedBackground === RANDOM_STAGE_ID) {
+      this.activeBackground = getRandomBackgroundId();
+      this.notifyBackgroundListeners(this.activeBackground, this.selectedBackground);
+    }
+
     if (this.progressionManager) {
       this.progressionManager.startSession();
     }
@@ -870,5 +962,6 @@ export class GameState {
     this.lifeRecoveredListeners.clear();
     this.timeListeners.clear();
     this.modeListeners.clear();
+    this.backgroundListeners.clear();
   }
 }

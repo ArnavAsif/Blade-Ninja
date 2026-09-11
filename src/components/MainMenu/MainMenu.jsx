@@ -390,6 +390,7 @@ export function MainMenu({
         onToggleSound={onToggleSound}
         onToggleMusic={onToggleMusic}
         onVolumeChange={onVolumeChange}
+        gameState={gameState}
       />
 
       {/* Progression & Career Modal */}

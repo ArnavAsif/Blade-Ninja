@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 
 import { ArcadeEnvironment } from '../src/game/ArcadeEnvironment.js';
 import { GameState, STATES } from '../src/game/GameState.js';
+import {
+  BACKGROUND_IDS,
+  BACKGROUND_CONFIGS,
+  BACKGROUND_LIST,
+  DEFAULT_BACKGROUND_ID,
+  RANDOM_STAGE_ID,
+  getBackgroundConfig,
+  getRandomBackgroundId,
+} from '../src/game/BackgroundConfig.js';
 
 function createMockContext() {
   const calls = [];
@@ -20,7 +29,7 @@ function createMockContext() {
     stroke: () => calls.push('stroke'),
     fill: () => calls.push('fill'),
     fillRect: (x, y, w, h) => calls.push(`fillRect(${x},${y},${w},${h})`),
-    drawImage: (img, x, y, w, h) => calls.push(`drawImage(${x},${y},${w},${h})`),
+    drawImage: (img, x, y, w, h) => calls.push(`drawImage(${img?.src || 'img'},${Math.round(x)},${Math.round(y)},${Math.round(w)},${Math.round(h)})`),
     createLinearGradient: () => ({
       addColorStop: () => {},
     }),
@@ -32,6 +41,7 @@ function createMockContext() {
     strokeStyle: '#000',
     lineWidth: 1,
     lineCap: 'butt',
+    globalAlpha: 1.0,
     imageSmoothingEnabled: true,
     imageSmoothingQuality: 'high',
   };
@@ -45,13 +55,28 @@ function createMockCanvas(ctx) {
   };
 }
 
+class MockImage {
+  constructor() {
+    this.src = '';
+    this.naturalWidth = 766;
+    this.naturalHeight = 338;
+    this.width = 766;
+    this.height = 338;
+    this.complete = true;
+  }
+}
+
 describe('ArcadeEnvironment System Tests', () => {
   let originalDocument;
+  let originalImage;
   let mockCtx;
 
   beforeEach(() => {
     mockCtx = createMockContext();
     originalDocument = globalThis.document;
+    originalImage = globalThis.Image;
+
+    globalThis.Image = MockImage;
     globalThis.document = {
       createElement: (tag) => {
         if (tag === 'canvas') {
@@ -64,11 +89,63 @@ describe('ArcadeEnvironment System Tests', () => {
 
   afterEach(() => {
     globalThis.document = originalDocument;
+    globalThis.Image = originalImage;
+  });
+
+  describe('Stage Configuration & Variants', () => {
+    it('defines all 6 distinct arcade stage environments with valid assets and colors', () => {
+      assert.equal(BACKGROUND_LIST.length, 6);
+      const expectedIds = ['cosmic', 'sunset', 'mystic', 'volcanic', 'sky', 'neon'];
+
+      for (const id of expectedIds) {
+        const config = BACKGROUND_CONFIGS[id];
+        assert.ok(config, `Missing config for stage ${id}`);
+        assert.equal(config.id, id);
+        assert.ok(config.name.length > 0);
+        assert.ok(config.tagline.length > 0);
+        assert.ok(config.image.startsWith('/backgrounds/bg_'));
+        assert.ok(config.primaryColor.startsWith('#'));
+        assert.ok(config.accentColor.startsWith('#'));
+        assert.ok(config.glow1 && typeof config.glow1.r === 'number');
+        assert.ok(config.glow2 && typeof config.glow2.r === 'number');
+        assert.ok(Array.isArray(config.particleColors) && config.particleColors.length >= 3);
+        assert.ok(config.hazeRgb && typeof config.hazeRgb.r === 'number');
+        assert.ok(config.vignetteStrength > 0.5 && config.vignetteStrength <= 1.0);
+        assert.ok(config.clarityMaskStrength > 0.1 && config.clarityMaskStrength <= 0.5);
+      }
+    });
+
+    it('returns default stage config when given invalid stage id', () => {
+      const fallback = getBackgroundConfig('non_existent_stage');
+      assert.equal(fallback.id, DEFAULT_BACKGROUND_ID);
+      assert.equal(fallback.name, 'Cosmic Astral');
+    });
+
+    it('returns a valid stage id from getRandomBackgroundId', () => {
+      for (let i = 0; i < 20; i++) {
+        const randomId = getRandomBackgroundId();
+        assert.ok(Object.values(BACKGROUND_IDS).includes(randomId));
+      }
+    });
   });
 
   describe('Architecture & Layer Initialization', () => {
-    it('initializes with 28 object-pooled ambient motes and pre-configured depths', () => {
+    it('initializes with default stage Cosmic Astral and preloads stage assets', () => {
       const env = new ArcadeEnvironment();
+      assert.equal(env.getStageId(), DEFAULT_BACKGROUND_ID);
+      assert.equal(env.getStageConfig().id, DEFAULT_BACKGROUND_ID);
+      assert.ok(env.currentImage);
+      assert.equal(env.transitionProgress, 1.0);
+    });
+
+    it('initializes with custom stage when specified', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.SUNSET);
+      assert.equal(env.getStageId(), BACKGROUND_IDS.SUNSET);
+      assert.equal(env.getStageConfig().name, 'Sunset Pagoda');
+    });
+
+    it('initializes with 28 object-pooled ambient motes tuned to stage palette', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.VOLCANIC);
       assert.equal(env.particles.length, 28);
 
       for (const p of env.particles) {
@@ -100,6 +177,62 @@ describe('ArcadeEnvironment System Tests', () => {
         assert.ok(s.angleDeg > 0);
         assert.ok(s.speed > 0);
       }
+    });
+  });
+
+  describe('Stage Selection & Crossfading', () => {
+    it('initiates smooth crossfade when switching stages', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.COSMIC);
+      assert.equal(env.getStageId(), BACKGROUND_IDS.COSMIC);
+      assert.equal(env.transitionProgress, 1.0);
+
+      env.setBackground(BACKGROUND_IDS.MYSTIC, true);
+
+      assert.equal(env.getStageId(), BACKGROUND_IDS.MYSTIC);
+      assert.equal(env.transitionProgress, 0.0);
+      assert.ok(env.prevConfig);
+      assert.equal(env.prevConfig.id, BACKGROUND_IDS.COSMIC);
+      assert.ok(env.prevImage);
+    });
+
+    it('advances crossfade progression across updates until complete', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.COSMIC);
+      env.setBackground(BACKGROUND_IDS.NEON, true);
+      assert.equal(env.transitionProgress, 0.0);
+
+      // Advance half transition duration with frame-sized steps
+      for (let i = 0; i < 5; i++) {
+        env.update(0.085);
+      }
+      assert.ok(env.transitionProgress > 0.4 && env.transitionProgress < 0.6);
+
+      // Complete transition
+      for (let i = 0; i < 8; i++) {
+        env.update(0.085);
+      }
+      assert.equal(env.transitionProgress, 1.0);
+      assert.equal(env.prevConfig, null);
+      assert.equal(env.prevImage, null);
+    });
+
+    it('retints ambient particles to new stage palette upon stage switch', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.COSMIC);
+      const cosmicColors = BACKGROUND_CONFIGS[BACKGROUND_IDS.COSMIC].particleColors;
+      assert.deepEqual(env.particles[0].color, cosmicColors[0]);
+
+      env.setBackground(BACKGROUND_IDS.VOLCANIC);
+      const volcanicColors = BACKGROUND_CONFIGS[BACKGROUND_IDS.VOLCANIC].particleColors;
+      assert.deepEqual(env.particles[0].color, volcanicColors[0]);
+    });
+
+    it('supports immediate stage switch without crossfade when requested', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.COSMIC);
+      env.setBackground(BACKGROUND_IDS.SKY, false);
+
+      assert.equal(env.getStageId(), BACKGROUND_IDS.SKY);
+      assert.equal(env.transitionProgress, 1.0);
+      assert.equal(env.prevConfig, null);
+      assert.equal(env.prevImage, null);
     });
   });
 
@@ -190,9 +323,7 @@ describe('ArcadeEnvironment System Tests', () => {
       gameState.setState(STATES.PLAYING);
 
       env.update(0.5, gameState);
-      // Particle should have moved upward (y decreases)
       assert.notEqual(env.particles[0].y, initialY);
-      // Particle count remains strictly fixed
       assert.equal(env.particles.length, 28);
     });
 
@@ -210,13 +341,30 @@ describe('ArcadeEnvironment System Tests', () => {
   });
 
   describe('Composite Render Pipeline', () => {
-    it('executes full composite render without exceptions in normal play', () => {
-      const env = new ArcadeEnvironment();
+    it('renders base stage artwork using cover scaling and drawImage', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.COSMIC);
       env.resize(800, 600, 1);
       const renderCtx = createMockContext();
 
       env.render(renderCtx, 800, 600);
-      assert.ok(renderCtx.calls.length > 0);
+
+      // Verify drawImage was called with stage artwork
+      const drawImageCalls = renderCtx.calls.filter((c) => c.startsWith('drawImage'));
+      assert.ok(drawImageCalls.length >= 1);
+    });
+
+    it('renders both previous and current images during crossfade transition', () => {
+      const env = new ArcadeEnvironment(BACKGROUND_IDS.COSMIC);
+      env.resize(800, 600, 1);
+      env.setBackground(BACKGROUND_IDS.VOLCANIC, true);
+      env.transitionProgress = 0.5; // Mid-crossfade
+
+      const renderCtx = createMockContext();
+      env.render(renderCtx, 800, 600);
+
+      // In mid-crossfade, drawImage is called for static canvas, prevImage, and currentImage
+      const drawImageCalls = renderCtx.calls.filter((c) => c.startsWith('drawImage'));
+      assert.ok(drawImageCalls.length >= 2);
     });
 
     it('renders radiant fever radial corona when fever intensity is elevated', () => {
@@ -227,7 +375,6 @@ describe('ArcadeEnvironment System Tests', () => {
       const renderCtx = createMockContext();
       env.render(renderCtx, 800, 600);
 
-      // Verify fillRect calls include both base blit and fever corona pass
       const fillRectCalls = renderCtx.calls.filter((c) => c.startsWith('fillRect'));
       assert.ok(fillRectCalls.length >= 4);
     });
@@ -240,7 +387,90 @@ describe('ArcadeEnvironment System Tests', () => {
       assert.equal(env.particles.length, 0);
       assert.equal(env.shapes.length, 0);
       assert.equal(env.streaks.length, 0);
+      assert.equal(env.currentImage, null);
+      assert.equal(env.prevImage, null);
       assert.equal(env.staticCanvas, null);
+    });
+  });
+
+  describe('GameState Background Selection & Persistence', () => {
+    let mockStorage;
+    let originalLocalStorage;
+    let originalWindow;
+
+    beforeEach(() => {
+      mockStorage = {};
+      originalLocalStorage = globalThis.localStorage;
+      originalWindow = globalThis.window;
+
+      const storageMock = {
+        getItem: (k) => mockStorage[k] ?? null,
+        setItem: (k, v) => { mockStorage[k] = v.toString(); },
+        removeItem: (k) => { delete mockStorage[k]; },
+      };
+
+      globalThis.localStorage = storageMock;
+      globalThis.window = { localStorage: storageMock };
+    });
+
+    afterEach(() => {
+      globalThis.localStorage = originalLocalStorage;
+      globalThis.window = originalWindow;
+    });
+
+    it('initializes GameState with default stage Cosmic Astral', () => {
+      const gameState = new GameState();
+      assert.equal(gameState.getSelectedBackground(), DEFAULT_BACKGROUND_ID);
+      assert.equal(gameState.getActiveBackground(), DEFAULT_BACKGROUND_ID);
+    });
+
+    it('sets and persists selected background to localStorage', () => {
+      const gameState = new GameState();
+      gameState.setBackground(BACKGROUND_IDS.SUNSET);
+
+      assert.equal(gameState.getSelectedBackground(), BACKGROUND_IDS.SUNSET);
+      assert.equal(gameState.getActiveBackground(), BACKGROUND_IDS.SUNSET);
+      assert.equal(mockStorage['blade_ninja_selected_background'], BACKGROUND_IDS.SUNSET);
+    });
+
+    it('notifies subscribers upon stage change', () => {
+      const gameState = new GameState();
+      const events = [];
+
+      const unsubscribe = gameState.subscribeBackground((active, selected) => {
+        events.push({ active, selected });
+      });
+
+      // Initial call
+      assert.equal(events.length, 1);
+      assert.equal(events[0].active, DEFAULT_BACKGROUND_ID);
+
+      // Change stage
+      gameState.setBackground(BACKGROUND_IDS.NEON);
+      assert.equal(events.length, 2);
+      assert.equal(events[1].active, BACKGROUND_IDS.NEON);
+      assert.equal(events[1].selected, BACKGROUND_IDS.NEON);
+
+      unsubscribe();
+      gameState.setBackground(BACKGROUND_IDS.MYSTIC);
+      assert.equal(events.length, 2); // Unsubscribed
+    });
+
+    it('picks a fresh random stage on session reset when Random Arena is selected', () => {
+      const gameState = new GameState();
+      gameState.setBackground(RANDOM_STAGE_ID);
+
+      assert.equal(gameState.getSelectedBackground(), RANDOM_STAGE_ID);
+      assert.ok(Object.values(BACKGROUND_IDS).includes(gameState.getActiveBackground()));
+
+      // Reset session picks and notifies
+      let lastActive = null;
+      gameState.subscribeBackground((active) => {
+        lastActive = active;
+      });
+
+      gameState.resetSession();
+      assert.ok(Object.values(BACKGROUND_IDS).includes(lastActive));
     });
   });
 });

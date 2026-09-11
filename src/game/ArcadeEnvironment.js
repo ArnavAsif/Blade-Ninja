@@ -2,32 +2,37 @@
  * ArcadeEnvironment
  *
  * Premium dynamic gameplay environment for modern arcade fruit-slicing.
+ * Integrates original arcade stage environments with responsive 7-layer composite architecture:
  *
- * Implements a 7-layer composite architecture:
- * Layer 1: Deep obsidian/midnight gradient base (cached offscreen)
- * Layer 2: Dynamic soft volumetric light zones (dual breathing ambient spectrums)
+ * Layer 1: Base stage artwork with cover/center scaling, subtle parallax drift, and smooth crossfades
+ * Layer 2: Dynamic soft volumetric light zones matched to the active stage's palette
  * Layer 3: Subtle abstract curved contour lines & micro-depth horizon (cached offscreen)
  * Layer 4: Distant blurred geometric & curved forms with parallax drift
- * Layer 5: Lightweight ambient floating motes/particles (object-pooled, zero allocation)
- * Layer 6: Soft atmospheric depth haze & central clarity contrast mask
+ * Layer 5: Lightweight ambient floating motes/particles (object-pooled, stage-tinted, zero allocation)
+ * Layer 6: Soft atmospheric depth haze & central clarity contrast mask (maximum fruit readability)
  * Layer 7: Occasional cinematic light streaks / sweep beams
  *
- * Features smooth dynamic state responsiveness:
+ * Supports dynamic gameplay reactions:
  * - Normal gameplay: subtle ambient motion, slow particle drift, gentle breathing
- * - Combos: increased background energy, intensified glow, light streaks
- * - Fever Mode: radiant electric atmosphere, accelerated particles, radial energy pulse
- * - Game Over: cinematic deceleration, dimmed luminance, focused clarity
+ * - Combos: intensified stage glow, accelerated particle drift, light streaks
+ * - Fever Mode: radiant electric atmosphere, rapid particles, energetic radial corona
+ * - Game Over: cinematic deceleration, dimmed luminance, focused center clarity
  *
  * Zero emojis, zero runtime garbage collection overhead, 60+ FPS performance.
  */
 
 import { lerp } from '../utils/math.js';
 import { STATES } from './GameState.js';
+import {
+  BACKGROUND_LIST,
+  DEFAULT_BACKGROUND_ID,
+  getBackgroundConfig,
+} from './BackgroundConfig.js';
 
 const PARTICLE_COUNT = 28;
 
 export class ArcadeEnvironment {
-  constructor() {
+  constructor(initialStageId = DEFAULT_BACKGROUND_ID) {
     this.w = 0;
     this.h = 0;
     this.dpr = 1;
@@ -40,7 +45,21 @@ export class ArcadeEnvironment {
     this.feverIntensity = 0.0;
     this.gameOverIntensity = 0.0;
 
-    // Static Pre-rendered Cache (Layers 1 & 3)
+    // Stage & Background Architecture
+    this.currentStageId = initialStageId;
+    this.currentConfig = getBackgroundConfig(initialStageId);
+    this.prevConfig = null;
+    this.transitionProgress = 1.0;
+    this.transitionDuration = 0.85;
+
+    // Image Caching & Preloading
+    this.imageCache = new Map();
+    this.currentImage = null;
+    this.prevImage = null;
+    this.preloadAllStages();
+    this.currentImage = this.loadImage(this.currentConfig.image);
+
+    // Static Pre-rendered Cache (Base gradient & subtle contours)
     this.staticCanvas = null;
     this.staticCtx = null;
     this.isStaticDirty = true;
@@ -59,16 +78,83 @@ export class ArcadeEnvironment {
   }
 
   /**
+   * Preloads all stage background images into cache if in a browser environment.
+   */
+  preloadAllStages() {
+    if (typeof Image === 'undefined') return;
+    for (const config of BACKGROUND_LIST) {
+      this.loadImage(config.image);
+    }
+  }
+
+  /**
+   * Loads and caches an image by URL.
+   */
+  loadImage(src) {
+    if (typeof Image === 'undefined' || !src) return null;
+    if (!this.imageCache.has(src)) {
+      const img = new Image();
+      img.src = src;
+      this.imageCache.set(src, img);
+    }
+    return this.imageCache.get(src);
+  }
+
+  /**
+   * Switches the active arcade stage environment with smooth crossfade.
+   */
+  setBackground(stageId, crossfade = true) {
+    if (stageId === this.currentStageId && this.transitionProgress >= 1.0) return;
+
+    const newConfig = getBackgroundConfig(stageId);
+
+    if (crossfade && this.currentConfig) {
+      this.prevConfig = this.currentConfig;
+      this.prevImage = this.currentImage;
+      this.transitionProgress = 0.0;
+    } else {
+      this.prevConfig = null;
+      this.prevImage = null;
+      this.transitionProgress = 1.0;
+    }
+
+    this.currentStageId = newConfig.id;
+    this.currentConfig = newConfig;
+    this.currentImage = this.loadImage(newConfig.image);
+
+    // Re-tune floating particles to the newly selected stage's palette
+    this.retintParticles(newConfig.particleColors);
+
+    // Re-bake static contours for updated stage colors
+    if (this.w > 0 && this.h > 0) {
+      this.bakeStaticLayers(this.w, this.h, this.dpr);
+    }
+  }
+
+  getStageId() {
+    return this.currentStageId;
+  }
+
+  getStageConfig() {
+    return this.currentConfig;
+  }
+
+  /**
+   * Updates particle colors smoothly to match the stage palette.
+   */
+  retintParticles(colors) {
+    if (!colors || colors.length === 0) return;
+    for (let i = 0; i < this.particles.length; i++) {
+      this.particles[i].color = colors[i % colors.length];
+    }
+  }
+
+  /**
    * Initializes lightweight object-pooled ambient motes.
    */
   initParticles() {
     this.particles = new Array(PARTICLE_COUNT);
-    const colors = [
-      { r: 56, g: 189, b: 248 },  // Electric Cyan
-      { r: 167, g: 139, b: 250 }, // Deep Violet
-      { r: 251, g: 191, b: 36 },  // Warm Amber Spark
-      { r: 255, g: 255, b: 255 }, // Pure White Mote
-    ];
+    const colors = this.currentConfig.particleColors;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const color = colors[i % colors.length];
@@ -106,7 +192,7 @@ export class ArcadeEnvironment {
         type: 'arc',
         driftSpeed: 0.25,
         phase: 0.0,
-        colorR: 14, colorG: 165, colorB: 233, // Cyan
+        colorR: 14, colorG: 165, colorB: 233,
         baseAlpha: 0.05,
       },
       // 1: Upper-right floating geometric shield/capsule
@@ -118,7 +204,7 @@ export class ArcadeEnvironment {
         type: 'arc',
         driftSpeed: 0.20,
         phase: 2.1,
-        colorR: 139, colorG: 92, colorB: 246, // Indigo/Violet
+        colorR: 139, colorG: 92, colorB: 246,
         baseAlpha: 0.045,
       },
       // 2: Upper-center deep soft orb
@@ -130,7 +216,7 @@ export class ArcadeEnvironment {
         type: 'orb',
         driftSpeed: 0.15,
         phase: 4.2,
-        colorR: 56, colorG: 189, colorB: 248, // Cyan
+        colorR: 56, colorG: 189, colorB: 248,
         baseAlpha: 0.04,
       },
       // 3: Lower-left flank curved horizon contour
@@ -142,7 +228,7 @@ export class ArcadeEnvironment {
         type: 'arc',
         driftSpeed: 0.18,
         phase: 1.2,
-        colorR: 99, colorG: 102, colorB: 241, // Indigo
+        colorR: 99, colorG: 102, colorB: 241,
         baseAlpha: 0.035,
       },
       // 4: Lower-right flank accent orb
@@ -154,7 +240,7 @@ export class ArcadeEnvironment {
         type: 'orb',
         driftSpeed: 0.22,
         phase: 3.5,
-        colorR: 244, colorG: 63, colorB: 94, // Rose/Crimson accent
+        colorR: 244, colorG: 63, colorB: 94,
         baseAlpha: 0.03,
       },
     ];
@@ -187,7 +273,7 @@ export class ArcadeEnvironment {
   }
 
   /**
-   * Handle viewport resize and re-bake static background layers (Layer 1 & Layer 3).
+   * Handle viewport resize and re-bake static background layers.
    */
   resize(width, height, dpr = 1) {
     if (width <= 0 || height <= 0) return;
@@ -207,7 +293,7 @@ export class ArcadeEnvironment {
   }
 
   /**
-   * Bakes Layer 1 (deep gradient base) and Layer 3 (subtle abstract contours & depth grid)
+   * Bakes Layer 1 (deep gradient base) and Layer 3 (subtle abstract contours)
    * into a zero-allocation offscreen canvas buffer.
    */
   bakeStaticLayers(w, h, dpr) {
@@ -224,13 +310,14 @@ export class ArcadeEnvironment {
     this.staticCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const ctx = this.staticCtx;
+    const cfg = this.currentConfig;
+    const haze = cfg.hazeRgb;
 
-    // --- Layer 1: Base Deep Obsidian/Midnight Gradient ---
-    // Vertical base gradient from deep navy/slate to pitch abyss
+    // Base obsidian backdrop gradient
     const baseGrad = ctx.createLinearGradient(0, 0, 0, h);
-    baseGrad.addColorStop(0.00, '#090D16'); // Deep midnight slate
-    baseGrad.addColorStop(0.45, '#060810'); // Obsidian indigo
-    baseGrad.addColorStop(1.00, '#030408'); // Pure obsidian floor
+    baseGrad.addColorStop(0.00, `rgb(${Math.max(0, haze.r - 2)}, ${Math.max(0, haze.g - 2)}, ${Math.max(0, haze.b - 2)})`);
+    baseGrad.addColorStop(0.50, '#060810');
+    baseGrad.addColorStop(1.00, '#030408');
 
     ctx.fillStyle = baseGrad;
     ctx.fillRect(0, 0, w, h);
@@ -252,12 +339,11 @@ export class ArcadeEnvironment {
     ctx.fillStyle = radialBackdrop;
     ctx.fillRect(0, 0, w, h);
 
-    // --- Layer 3: Subtle Abstract Curved Contours & Depth Lines ---
+    // Subtle Abstract Curved Contours
     ctx.save();
-
-    // 1. Sleek aerodynamic curved horizon lines
     const contourCount = 4;
     const baseY = h * 0.68;
+    const g1 = cfg.glow1;
 
     for (let i = 0; i < contourCount; i++) {
       const yOffset = i * (h * 0.08);
@@ -266,7 +352,6 @@ export class ArcadeEnvironment {
       ctx.beginPath();
       ctx.moveTo(-50, baseY + yOffset);
 
-      // Graceful cubic bezier waves giving modern arcade curvature
       ctx.bezierCurveTo(
         w * 0.28,
         baseY + yOffset - 35,
@@ -276,12 +361,13 @@ export class ArcadeEnvironment {
         baseY + yOffset - 20
       );
 
-      ctx.strokeStyle = `rgba(56, 189, 248, ${Math.max(0.008, alpha)})`;
+      ctx.strokeStyle = `rgba(${g1.r}, ${g1.g}, ${g1.b}, ${Math.max(0.008, alpha)})`;
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
 
-    // 2. Complementary counter-curves in upper quadrants
+    // Complementary counter-curves in upper quadrants
+    const g2 = cfg.glow2;
     for (let i = 0; i < 3; i++) {
       const topY = h * 0.18 + i * 40;
       ctx.beginPath();
@@ -294,27 +380,8 @@ export class ArcadeEnvironment {
         w + 50,
         topY + 15
       );
-      ctx.strokeStyle = `rgba(139, 92, 246, ${0.015 - i * 0.003})`;
+      ctx.strokeStyle = `rgba(${g2.r}, ${g2.g}, ${g2.b}, ${0.015 - i * 0.003})`;
       ctx.lineWidth = 1.2;
-      ctx.stroke();
-    }
-
-    // 3. Subtle micro-depth perspective rays from distant focal point
-    const focalX = w * 0.5;
-    const focalY = h * 0.38;
-    const rayCount = 8;
-
-    for (let i = 0; i <= rayCount; i++) {
-      const angle = Math.PI * 0.15 + (i / rayCount) * (Math.PI * 0.7);
-      const dist = Math.max(w, h);
-      const endX = focalX + Math.cos(angle) * dist;
-      const endY = focalY + Math.sin(angle) * dist;
-
-      ctx.beginPath();
-      ctx.moveTo(focalX, focalY);
-      ctx.lineTo(endX, endY);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.008)';
-      ctx.lineWidth = 1.0;
       ctx.stroke();
     }
 
@@ -322,11 +389,20 @@ export class ArcadeEnvironment {
   }
 
   /**
-   * Updates dynamic energy, breathing time, and particle/streak motion.
+   * Updates dynamic energy, breathing time, stage transitions, and particle/streak motion.
    */
   update(dt, gameState) {
     if (dt <= 0) return;
     const clampedDt = Math.min(dt, 0.1);
+
+    // Advance stage crossfade progress
+    if (this.transitionProgress < 1.0) {
+      this.transitionProgress = Math.min(1.0, this.transitionProgress + clampedDt / this.transitionDuration);
+      if (this.transitionProgress >= 1.0) {
+        this.prevConfig = null;
+        this.prevImage = null;
+      }
+    }
 
     const state = gameState ? gameState.getState() : STATES.PLAYING;
     const isGameOver = state === STATES.GAME_OVER;
@@ -413,7 +489,7 @@ export class ArcadeEnvironment {
   render(ctx, w, h) {
     if (w <= 0 || h <= 0) return;
 
-    // --- 1. Layer 1 & 3: Blit Cached Base Gradient & Contours ---
+    // --- 1. Base Layer: Static gradient backup or artwork backdrop ---
     if (this.staticCanvas) {
       ctx.drawImage(this.staticCanvas, 0, 0, w, h);
     } else {
@@ -421,79 +497,145 @@ export class ArcadeEnvironment {
       ctx.fillRect(0, 0, w, h);
     }
 
-    // --- 2. Layer 2: Dynamic Soft Volumetric Light Zones ---
+    // --- 2. Layer 1: Base Stage Artwork (Cover scaling, center, parallax drift, crossfade) ---
+    this.renderArtworkLayer(ctx, w, h);
+
+    // --- 3. Layer 2: Dynamic Soft Volumetric Light Zones (Stage-tuned) ---
     this.renderAtmosphericGlow(ctx, w, h);
 
-    // --- 3. Layer 4: Distant Abstract Geometric Shapes (Parallax) ---
+    // --- 4. Layer 4: Distant Abstract Geometric Shapes (Parallax) ---
     this.renderDistantShapes(ctx, w, h);
 
-    // --- 4. Layer 7: Cinematic Light Streaks ---
+    // --- 5. Layer 7: Cinematic Light Streaks ---
     this.renderLightStreaks(ctx, w, h);
 
-    // --- 5. Layer 5: Lightweight Ambient Floating Particles ---
+    // --- 6. Layer 5: Lightweight Ambient Floating Particles (Stage-tinted) ---
     this.renderParticles(ctx);
 
-    // --- 6. Layer 6: Soft Atmospheric Depth Haze & Central Clarity Vignette ---
+    // --- 7. Layer 6: Soft Atmospheric Depth Haze & Central Clarity Vignette ---
     this.renderDepthHazeAndClarity(ctx, w, h);
 
-    // --- 7. Fever Radial Energy Corona (if Fever active) ---
+    // --- 8. Fever Radial Energy Corona (if Fever active) ---
     if (this.feverIntensity > 0.02) {
       this.renderFeverRadialEnergy(ctx, w, h);
     }
   }
 
   /**
+   * Layer 1: Renders the active stage artwork with cover scaling, centered position,
+   * subtle floating parallax drift, and smooth crossfade transitions.
+   */
+  renderArtworkLayer(ctx, w, h) {
+    const isCrossfading = this.transitionProgress < 1.0 && this.prevImage;
+
+    if (isCrossfading) {
+      // Draw previous image fading out
+      const prevAlpha = (1.0 - this.transitionProgress) * (1.0 - this.gameOverIntensity * 0.5);
+      this.drawCoverArtwork(ctx, this.prevImage, w, h, prevAlpha);
+
+      // Draw current image fading in
+      const curAlpha = this.transitionProgress * (1.0 - this.gameOverIntensity * 0.5);
+      this.drawCoverArtwork(ctx, this.currentImage, w, h, curAlpha);
+    } else if (this.currentImage) {
+      const alpha = 1.0 - this.gameOverIntensity * 0.5;
+      this.drawCoverArtwork(ctx, this.currentImage, w, h, alpha);
+    }
+  }
+
+  /**
+   * Draws a background image with aspect-ratio-preserving cover scaling,
+   * center alignment, and slight sinusoidal parallax drift.
+   */
+  drawCoverArtwork(ctx, img, w, h, alpha) {
+    if (!img) return;
+    const nw = img.naturalWidth || img.width;
+    const nh = img.naturalHeight || img.height;
+    if (!nw || !nh) return;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+    const imgAspect = nw / nh;
+    const screenAspect = w / h;
+
+    // Slight margin (1.05) ensures parallax drift never reveals unpainted edges
+    const zoom = 1.05;
+    let drawW, drawH;
+
+    if (screenAspect > imgAspect) {
+      drawW = w * zoom;
+      drawH = (w / imgAspect) * zoom;
+    } else {
+      drawH = h * zoom;
+      drawW = (h * imgAspect) * zoom;
+    }
+
+    // Subtle continuous floating parallax drift (slow, relaxing, non-intrusive)
+    const driftX = Math.cos(this.time * 0.18) * (w * 0.012);
+    const driftY = Math.sin(this.time * 0.22) * (h * 0.009);
+
+    const drawX = (w - drawW) * 0.5 + driftX;
+    const drawY = (h - drawH) * 0.5 + driftY;
+
+    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    ctx.restore();
+  }
+
+  /**
    * Layer 2: Soft dynamic volumetric glow zones.
-   * Dual-spectrum aura: Electric Azure/Cyan top-center and Deep Indigo/Violet flanks.
-   * Modulated smoothly by combo and fever energy.
+   * Matched to the active stage's color palette (glow1 & glow2).
    */
   renderAtmosphericGlow(ctx, w, h) {
     const t = this.time;
     const pulse1 = 0.5 + 0.5 * Math.sin(t * 1.4);
     const pulse2 = 0.5 + 0.5 * Math.cos(t * 1.1);
 
-    const baseCyanAlpha = (0.09 + 0.04 * pulse1 + this.comboIntensity * 0.06 + this.feverIntensity * 0.14) * (1.0 - this.gameOverIntensity * 0.6);
-    const baseVioletAlpha = (0.07 + 0.03 * pulse2 + this.comboIntensity * 0.05 + this.feverIntensity * 0.12) * (1.0 - this.gameOverIntensity * 0.6);
+    const cfg = this.currentConfig;
+    const g1 = cfg.glow1;
+    const g2 = cfg.glow2;
 
-    // Aura 1: Top-Center Electric Cyan pool
-    const cyanX = w * 0.5 + Math.sin(t * 0.5) * (w * 0.06);
-    const cyanY = h * 0.28 + Math.cos(t * 0.6) * (h * 0.04);
-    const cyanRadius = Math.max(w, h) * (0.55 + 0.05 * pulse1);
+    const baseAlpha1 = (g1.a + 0.04 * pulse1 + this.comboIntensity * 0.06 + this.feverIntensity * 0.14) * (1.0 - this.gameOverIntensity * 0.6);
+    const baseAlpha2 = (g2.a + 0.03 * pulse2 + this.comboIntensity * 0.05 + this.feverIntensity * 0.12) * (1.0 - this.gameOverIntensity * 0.6);
 
-    const cyanGrad = ctx.createRadialGradient(
-      cyanX,
-      cyanY,
+    // Aura 1: Top-Center to upper quadrant pool
+    const aura1X = w * 0.5 + Math.sin(t * 0.5) * (w * 0.06);
+    const aura1Y = h * 0.28 + Math.cos(t * 0.6) * (h * 0.04);
+    const aura1Radius = Math.max(w, h) * (0.55 + 0.05 * pulse1);
+
+    const grad1 = ctx.createRadialGradient(
+      aura1X,
+      aura1Y,
       Math.min(w, h) * 0.05,
-      cyanX,
-      cyanY,
-      cyanRadius
+      aura1X,
+      aura1Y,
+      aura1Radius
     );
-    cyanGrad.addColorStop(0.00, `rgba(56, 189, 248, ${baseCyanAlpha})`);
-    cyanGrad.addColorStop(0.40, `rgba(2, 132, 199, ${baseCyanAlpha * 0.55})`);
-    cyanGrad.addColorStop(0.75, `rgba(14, 165, 233, ${baseCyanAlpha * 0.18})`);
-    cyanGrad.addColorStop(1.00, 'rgba(6, 182, 212, 0)');
+    grad1.addColorStop(0.00, `rgba(${g1.r}, ${g1.g}, ${g1.b}, ${baseAlpha1})`);
+    grad1.addColorStop(0.40, `rgba(${g1.r}, ${g1.g}, ${g1.b}, ${baseAlpha1 * 0.55})`);
+    grad1.addColorStop(0.75, `rgba(${g1.r}, ${g1.g}, ${g1.b}, ${baseAlpha1 * 0.18})`);
+    grad1.addColorStop(1.00, `rgba(${g1.r}, ${g1.g}, ${g1.b}, 0)`);
 
-    ctx.fillStyle = cyanGrad;
+    ctx.fillStyle = grad1;
     ctx.fillRect(0, 0, w, h);
 
-    // Aura 2: Deep Violet / Indigo flank aura
-    const violetX = w * 0.75 + Math.cos(t * 0.4) * (w * 0.05);
-    const violetY = h * 0.65 + Math.sin(t * 0.45) * (h * 0.05);
-    const violetRadius = Math.max(w, h) * 0.48;
+    // Aura 2: Flank aura
+    const aura2X = w * 0.75 + Math.cos(t * 0.4) * (w * 0.05);
+    const aura2Y = h * 0.65 + Math.sin(t * 0.45) * (h * 0.05);
+    const aura2Radius = Math.max(w, h) * 0.48;
 
-    const violetGrad = ctx.createRadialGradient(
-      violetX,
-      violetY,
+    const grad2 = ctx.createRadialGradient(
+      aura2X,
+      aura2Y,
       Math.min(w, h) * 0.04,
-      violetX,
-      violetY,
-      violetRadius
+      aura2X,
+      aura2Y,
+      aura2Radius
     );
-    violetGrad.addColorStop(0.00, `rgba(139, 92, 246, ${baseVioletAlpha})`);
-    violetGrad.addColorStop(0.45, `rgba(99, 102, 241, ${baseVioletAlpha * 0.50})`);
-    violetGrad.addColorStop(1.00, 'rgba(79, 70, 229, 0)');
+    grad2.addColorStop(0.00, `rgba(${g2.r}, ${g2.g}, ${g2.b}, ${baseAlpha2})`);
+    grad2.addColorStop(0.45, `rgba(${g2.r}, ${g2.g}, ${g2.b}, ${baseAlpha2 * 0.50})`);
+    grad2.addColorStop(1.00, `rgba(${g2.r}, ${g2.g}, ${g2.b}, 0)`);
 
-    ctx.fillStyle = violetGrad;
+    ctx.fillStyle = grad2;
     ctx.fillRect(0, 0, w, h);
   }
 
@@ -587,7 +729,7 @@ export class ArcadeEnvironment {
 
   /**
    * Layer 5: Lightweight ambient floating motes/particles.
-   * Rendered in a tight zero-allocation loop.
+   * Rendered in a tight zero-allocation loop with stage-tuned colors.
    */
   renderParticles(ctx) {
     for (let i = 0; i < this.particles.length; i++) {
@@ -616,28 +758,33 @@ export class ArcadeEnvironment {
    * Keeps the center slicing zone crystal-clear and frames edges with a cinematic vignette.
    */
   renderDepthHazeAndClarity(ctx, w, h) {
+    const cfg = this.currentConfig;
+    const haze = cfg.hazeRgb;
+    const clarityStrength = cfg.clarityMaskStrength;
+    const vignetteStrength = cfg.vignetteStrength;
+
     // 1. Central contrast mask: Keeps center fruit space dark, clean, and high-contrast
     const clarityVignette = ctx.createRadialGradient(
       w * 0.5,
-      h * 0.50,
-      Math.min(w, h) * 0.35,
+      h * 0.48,
+      Math.min(w, h) * 0.32,
       w * 0.5,
-      h * 0.50,
+      h * 0.48,
       Math.max(w, h) * 0.78
     );
     clarityVignette.addColorStop(0.00, 'rgba(0, 0, 0, 0)');
-    clarityVignette.addColorStop(0.65, 'rgba(3, 5, 10, 0.22)');
-    clarityVignette.addColorStop(1.00, 'rgba(2, 3, 6, 0.72)');
+    clarityVignette.addColorStop(0.60, `rgba(${haze.r}, ${haze.g}, ${haze.b}, ${clarityStrength})`);
+    clarityVignette.addColorStop(1.00, `rgba(2, 3, 6, ${vignetteStrength})`);
 
     ctx.fillStyle = clarityVignette;
     ctx.fillRect(0, 0, w, h);
 
-    // 2. Soft bottom depth fog band
+    // 2. Soft bottom depth fog band matched to stage haze
     const fogHeight = Math.min(180, h * 0.28);
     const bottomFog = ctx.createLinearGradient(0, h, 0, h - fogHeight);
-    bottomFog.addColorStop(0.00, 'rgba(6, 10, 20, 0.55)');
-    bottomFog.addColorStop(0.50, 'rgba(6, 10, 20, 0.18)');
-    bottomFog.addColorStop(1.00, 'rgba(6, 10, 20, 0)');
+    bottomFog.addColorStop(0.00, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0.58)`);
+    bottomFog.addColorStop(0.50, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0.20)`);
+    bottomFog.addColorStop(1.00, `rgba(${haze.r}, ${haze.g}, ${haze.b}, 0)`);
 
     ctx.fillStyle = bottomFog;
     ctx.fillRect(0, h - fogHeight, w, fogHeight);
@@ -649,6 +796,8 @@ export class ArcadeEnvironment {
   renderFeverRadialEnergy(ctx, w, h) {
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 4.5);
     const alpha = this.feverIntensity * (0.12 + 0.08 * pulse);
+    const cfg = this.currentConfig;
+    const g1 = cfg.glow1;
 
     const feverGrad = ctx.createRadialGradient(
       w * 0.5,
@@ -659,7 +808,7 @@ export class ArcadeEnvironment {
       Math.max(w, h) * 0.76
     );
     feverGrad.addColorStop(0.00, 'rgba(245, 158, 11, 0)');
-    feverGrad.addColorStop(0.60, `rgba(56, 189, 248, ${alpha * 0.40})`);
+    feverGrad.addColorStop(0.60, `rgba(${g1.r}, ${g1.g}, ${g1.b}, ${alpha * 0.40})`);
     feverGrad.addColorStop(0.85, `rgba(245, 158, 11, ${alpha * 0.65})`);
     feverGrad.addColorStop(1.00, `rgba(225, 29, 72, ${alpha * 0.85})`);
 
@@ -671,6 +820,9 @@ export class ArcadeEnvironment {
     this.particles = [];
     this.shapes = [];
     this.streaks = [];
+    this.imageCache.clear();
+    this.currentImage = null;
+    this.prevImage = null;
     this.staticCanvas = null;
     this.staticCtx = null;
   }
